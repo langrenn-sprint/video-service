@@ -1,0 +1,22 @@
+services:
+  video-service:
+    build: .
+    image: ghcr.io/langrenn-sprint/video-service:test
+    environment:
+      - LOGGING_LEVEL=${LOGGING_LEVEL}
+      - EVENTS_HOST_SERVER=event-service
+      - EVENTS_HOST_PORT=8080
+      - PHOTOS_HOST_SERVER=photo-service
+      - PHOTOS_HOST_PORT=8080
+      - USERS_HOST_SERVER=user-service
+      - USERS_HOST_PORT=8080
+    volumes:
+      - type: bind
+        source: video_service/config/global_settings.json
+        target: /app/config/global_settings.json
+      - type: bind
+        source: video_service/files
+        target: /app/files
+      - type: bind
+        source: error.log
+        target: /app/error.log

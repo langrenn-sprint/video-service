@@ -1,0 +1,112 @@
+[project]
+description = "A tool to analyse video stream and detect people crossing line."
+license = "Apache-2.0"
+name = "video-service"
+readme = "README.md"
+version = "1.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "aiodns>=3.2.0",
+    "aiofiles>=24.1.0",
+    "certifi>=2024.8.30",
+    "dataclasses-json>=0.6.7",
+    "multidict>=6.1.0",
+    "opencv-python>=4.11.0.86",
+    "pyjwt>=2.9.0",
+    "python-dotenv>=1.0.1",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "poethepoet>=0.29.0",
+    "pyright>=1.1.386",
+    "pytest-aiohttp>=1.0.5",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=5.0.0",
+    "pytest-docker>=3.1.1",
+    "pytest-env>=1.1.5",
+    "pytest-mock>=3.14.0",
+    "pytest>=8.3.3",
+    "requests>=2.32.3",
+    "ruff>=0.7.1",
+]
+
+[tool.poe.tasks]
+fmt = "uv run ruff format"
+lint = "uv run ruff check --fix"
+pyright = "uv run pyright"
+unit-tests = "uv run pytest -m unit"
+integration-tests = "uv run pytest --cov=user_service --cov-report=term-missing -m integration"
+contract-tests = "uv run pytest -m contract"
+release = [
+    "lint",
+    "pyright",
+]
+
+
+[tool.ruff.lint]
+select = ["ALL"]
+# and then manually ignore annoying ones:
+ignore = [
+    "ANN401", # Any should be allowed
+    "ASYNC230",
+    "BLE001",
+    "D211",
+    "D213",
+    "COM812",
+    "D203",
+    "E501",
+    "EM102",
+    "F401",
+    "G004",
+    "ISC001",
+    "LOG015",
+    "PLR0913",
+    "SIM102",
+    "TRY002",
+]
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    # at least this three should be fine in tests:
+    "S101", # asserts allowed in tests...
+    #     "ARG",  # Unused function args -> fixtures nevertheless are functionally relevant...
+    #     "FBT",  # Don't care about booleans as positional arguments in tests, e.g. via @pytest.mark.parametrize()
+]
+
+[tool.ruff.lint.isort]
+# so it knows to group first-party stuff last
+known-first-party = ["user_service"]
+
+[tool.pyright]
+venvPath = "." # rye installs the venv in the current dir
+venv = ".venv" #       in a folder called `.venv`
+#strict = ["**/*.py"] # use 'strict' checking on all files
+
+[tool.pytest.ini_options]
+env = [
+    "CONFIG=test",
+    "JWT_SECRET=secret",
+    "ADMIN_USERNAME=admin",
+    "ADMIN_PASSWORD=password",
+    "JWT_EXP_DELTA_SECONDS=60",
+    "JWT_SECRET=secret",
+    "LOGGING_LEVEL=INFO",
+]
+asyncio_mode = "auto"
+markers = [
+    "unit: marks tests as unit",
+    "integration: marks tests as integration",
+    "contract: marks tests as contract",
+]
+
+[tool.coverage.paths]
+source = ["video_service", "*/site-packages"]
+
+[tool.coverage.run]
+branch = false
+omit = ["*unnga.py"]
+source = ["video_service"]
+
+[tool.coverage.report]
+fail_under = 10
+show_missing = true

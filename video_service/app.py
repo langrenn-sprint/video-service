@@ -39,19 +39,24 @@ formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 file_handler.setFormatter(formatter)
 logging.getLogger().addHandler(file_handler)
 
+MODE = os.getenv("MODE", "DUMMY")
 
 async def main() -> None:
     """CLI for analysing video stream."""
     token = ""
     event = {}
     status_type = ""
-    i = STATUS_INTERVAL
     try:
         # login to data-source
         token = await do_login()
         event = await get_event(token)
+
+        if MODE not in ["CAPTURE", "ENHANCE", "DETECT"]:
+            informasjon = f"Invalid mode {MODE} - no video processing will be done."
+            raise Exception(informasjon)
+
         information = (
-            f"video-service is ready! - {event['name']}, {event['date_of_event']}"
+            f"video-service is ready, mode {MODE}! - {event['name']}, {event['date_of_event']}"
         )
         status_type = await ConfigAdapter().get_config(
             token, event["id"], "VIDEO_SERVICE_STATUS_TYPE"
@@ -59,44 +64,16 @@ async def main() -> None:
         await StatusAdapter().create_status(
             token, event, status_type, information
         )
-
         # service ready!
         await ConfigAdapter().update_config(
-            token, event["id"], "VIDEO_SERVICE_AVAILABLE", "True"
+            token, event["id"], f"{MODE}_VIDEO_SERVICE_AVAILABLE", "True"
         )
+
+        i = STATUS_INTERVAL
         while True:
-            video_config = await get_config(token, event["id"])
-            try:
-                if video_config["stop_tracking"]:
-                    await ConfigAdapter().update_config(
-                        token, event["id"], "VIDEO_SERVICE_STOP", "False"
-                    )
-                elif video_config["video_start"]:
-                    await VideoService().capture_video(
-                        token, event, status_type, video_file_path
-                    )
-                elif video_config["video_running"]:
-                    # should be invalid (no muliti thread) - reset
-                    await ConfigAdapter().update_config(
-                        token, event["id"], "VIDEO_SERVICE_RUNNING", "False"
-                    )
-            except Exception as e:
-                err_string = str(e)
-                logging.exception(err_string)
-                await StatusAdapter().create_status(
-                    token,
-                    event,
-                    status_type,
-                    f"Error in video-service: {err_string}",
-                )
-                await ConfigAdapter().update_config(
-                    token, event["id"], "VIDEO_SERVICE_RUNNING", "False"
-                )
-                await ConfigAdapter().update_config(
-                    token, event["id"], "VIDEO_SERVICE_START", "False"
-                )
+            await run_the_video_service(token)
             if i > STATUS_INTERVAL:
-                informasjon = "video-service er klar til å starte analyse."
+                informasjon = f"video-service er klar til å starte analyse, mode {MODE}."
                 await StatusAdapter().create_status(
                     token, event, status_type, informasjon
                 )
@@ -104,6 +81,7 @@ async def main() -> None:
             else:
                 i += 1
             await asyncio.sleep(2)
+
     except Exception as e:
         err_string = str(e)
         logging.exception(err_string)
@@ -115,6 +93,44 @@ async def main() -> None:
     )
     logging.info("Goodbye!")
 
+
+async def run_the_video_service(token: str ) -> None:
+    """Run the service."""
+    video_config = await get_config(token, event["id"], MODE)
+    try:
+        if video_config["stop_tracking"]:
+            await ConfigAdapter().update_config(
+                token, event["id"], f"{MODE}_VIDEO_SERVICE_STOP", "False"
+            )
+        elif video_config["video_start"]:
+            if MODE == "CAPTURE":
+                await VideoService().capture_video(
+                    token, event, status_type, video_file_path
+                )
+            elif MODE == "ENHANCE":
+                await VideoService().enhance_video(
+                    token, event, status_type
+                )
+        elif video_config["video_running"]:
+            # should be invalid (no muliti thread) - reset
+            await ConfigAdapter().update_config(
+                token, event["id"], f"{MODE}_VIDEO_SERVICE_RUNNING", "False"
+            )
+    except Exception as e:
+        err_string = str(e)
+        logging.exception(err_string)
+        await StatusAdapter().create_status(
+            token,
+            event,
+            status_type,
+            f"Error in video-service: {err_string}",
+        )
+        await ConfigAdapter().update_config(
+            token, event["id"], f"{MODE}_VIDEO_SERVICE_RUNNING", "False"
+        )
+        await ConfigAdapter().update_config(
+            token, event["id"], f"{MODE}_VIDEO_SERVICE_START", "False"
+        )
 
 async def do_login() -> str:
     """Login to data-source."""
@@ -166,29 +182,21 @@ async def get_event(token: str) -> dict:
     return event
 
 
-async def get_config(token: str, event_id: str) -> dict:
+async def get_config(token: str, event_id: str, mode: str) -> dict:
     """Get config details - use info from db."""
     video_running = await ConfigAdapter().get_config_bool(
-        token, event_id, "VIDEO_SERVICE_RUNNING"
+        token, event_id, f"{mode}_VIDEO_SERVICE_RUNNING"
     )
     video_start = await ConfigAdapter().get_config_bool(
-        token, event_id, "VIDEO_SERVICE_START"
+        token, event_id, f"{mode}_VIDEO_SERVICE_START"
     )
     stop_tracking = await ConfigAdapter().get_config_bool(
-        token, event_id, "VIDEO_SERVICE_STOP"
-    )
-    start_simulation = await ConfigAdapter().get_config_bool(
-        token, event_id, "SIMULATION_CROSSINGS_START"
-    )
-    draw_trigger_line = await ConfigAdapter().get_config_bool(
-        token, event_id, "DRAW_TRIGGER_LINE"
+        token, event_id, f"{mode}_VIDEO_SERVICE_STOP"
     )
     return {
         "video_running": video_running,
         "video_start": video_start,
-        "start_simulation": start_simulation,
         "stop_tracking": stop_tracking,
-        "draw_trigger_line": draw_trigger_line,
     }
 
 

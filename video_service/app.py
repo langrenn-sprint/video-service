@@ -71,7 +71,7 @@ async def main() -> None:
 
         i = STATUS_INTERVAL
         while True:
-            await run_the_video_service(token)
+            await run_the_video_service(token, event)
             if i > STATUS_INTERVAL:
                 informasjon = f"video-service er klar til å starte analyse, mode {MODE}."
                 await StatusAdapter().create_status(
@@ -94,8 +94,9 @@ async def main() -> None:
     logging.info("Goodbye!")
 
 
-async def run_the_video_service(token: str ) -> None:
+async def run_the_video_service(token: str, event: dict) -> None:
     """Run the service."""
+    video_config = {}
     video_config = await get_config(token, event["id"], MODE)
     try:
         if video_config["stop_tracking"]:

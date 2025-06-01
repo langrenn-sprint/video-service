@@ -129,6 +129,10 @@ class PhotosFileAdapter:
 
         if writer is not None:
             writer.release()
+
+        # archive the input videos
+        for segment in video_segments:
+            move_to_archive(Path(segment["path"]).name)
         return output_path
 
 def move_to_archive(filename: str) -> None:

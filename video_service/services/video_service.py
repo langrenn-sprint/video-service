@@ -24,6 +24,7 @@ DETECTION_BOX_MAXIMUM_SIZE = 0.9
 EDGE_MARGIN = 0.02
 MIN_CONFIDENCE = 0.6
 DETECTION_CLASSES = [0]  # person
+MAX_CLIPS_TO_CONCATENATE = 10  # maximum number of clips per enhanced video
 
 class VideoService:
     """Class representing video service."""
@@ -55,6 +56,7 @@ class VideoService:
         mode = "CAPTURE"
         informasjon = ""
         video_stream_url = await ConfigAdapter().get_config(token, event["id"], "VIDEO_URL")
+        video_clip_fps = await ConfigAdapter().get_config_int(token, event["id"], "VIDEO_CLIP_FPS")
         await StatusAdapter().create_status(
             token,
             event,
@@ -65,10 +67,6 @@ class VideoService:
             token, event["id"], f"{mode}_VIDEO_SERVICE_START", "False"
         )
 
-        # Define the desired image size as a tuple (width, height)
-        image_size = await ConfigAdapter().get_config_img_res_tuple(
-            token, event["id"], "VIDEO_ANALYTICS_IMAGE_SIZE"
-        )
         clip_duration = await ConfigAdapter().get_config_int(
             token, event["id"], "VIDEO_CLIP_DURATION"
         )
@@ -79,21 +77,32 @@ class VideoService:
             logging.exception(informasjon)
             raise VideoStreamNotFoundError(informasjon)
 
+        width = int(video_capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        image_size = (width, height)
         frame_rate = int(video_capture.get(cv2.CAP_PROP_FPS))  # Get the frame rate of the video
+        frame_interval = max(1, round(frame_rate / video_clip_fps))
         frames_per_clip = frame_rate * clip_duration  # Calculate the number of frames for a 15-second clip
         clip_count = 0
+        # Update status and return result
+        await StatusAdapter().create_status(
+            token,
+            event,
+            status_type,
+            f"Initiating video capture. Input FPS {frame_rate}, output FPS: {video_clip_fps}.",
+        )
 
         try:
             while True:
                 clip_frames = []
-                for _ in range(frames_per_clip):
+                frame_idx = 0
+                for frame_idx in range(frames_per_clip):
                     ret, frame = video_capture.read()
                     if not ret:
                         break  # End of video stream
 
-                    # Resize frame to the desired image size
-                    resized_frame = cv2.resize(frame, image_size)
-                    clip_frames.append(resized_frame)
+                    if frame_idx % frame_interval == 0:
+                        clip_frames.append(frame)
 
                 if not clip_frames:
                     break  # No more frames to process
@@ -105,7 +114,7 @@ class VideoService:
 
                 # Define the codec and create a VideoWriter object
                 fourcc = cv2.VideoWriter.fourcc(*"XVID")
-                out = cv2.VideoWriter(clip_filename, fourcc, frame_rate, image_size)
+                out = cv2.VideoWriter(clip_filename, fourcc, video_clip_fps, image_size)
 
                 for frame in clip_frames:
                     out.write(frame)
@@ -159,74 +168,92 @@ class VideoService:
 
         """
         mode = "ENHANCE"
-        clip_count = 0
         informasjon = ""
         await ConfigAdapter().update_config(
             token, event["id"], "ENHANCE_VIDEO_SERVICE_START", "False"
         )
 
+        while True:
+            clip_count = 0
+            frame_count = 0
 
-        # Open the video stream for captured video clips
-        video_urls = PhotosFileAdapter().get_all_files("CAPTURE", VIDEO_SUFFIX)
-        if video_urls:
+            # Open the video stream for captured video clips
+            video_urls = PhotosFileAdapter().get_all_files("CAPTURE", VIDEO_SUFFIX)
+            if video_urls:
+                await ConfigAdapter().update_config(
+                    token, event["id"], "VIDEO_ANALYTICS_RUNNING", "True"
+                )
+            model = YOLO("yolov8n.pt")  # Load an official Detect model
+            image_size = (640, 480) # Set low image size for faster processing
+            video_stream_detections = {}
+            for video_stream_url in video_urls:
+
+                # Perform tracking with the model
+                clip_count += 1
+                if clip_count > MAX_CLIPS_TO_CONCATENATE:
+                    break
+                try:
+                    results = model.track(
+                        source=video_stream_url,
+                        conf=MIN_CONFIDENCE,
+                        classes=DETECTION_CLASSES,
+                        stream=True,
+                        imgsz=image_size,
+                        persist=True
+                    )
+                except Exception as e:
+                    informasjon = f"Error opening video stream from: {video_stream_url}"
+                    logging.exception(informasjon)
+                    raise VideoStreamNotFoundError(informasjon) from e
+
+                trigger_line_xyxyn = await VisionAIService().get_trigger_line_xyxy_list(
+                    token, event
+                )
+                all_crossings = []
+                for result in results:
+                    # get overview of people crossing the trigger line
+                    frame_count += 1
+                    all_crossings.append(
+                        self.get_all_crossings(frame_count, result, trigger_line_xyxyn)
+                    )
+                # analyse results and identify crossings in the video stream
+                crossings_summary = self.get_crossings_summary(all_crossings)
+                video_stream_detections[video_stream_url] = crossings_summary
+
+            # Save the relevant clips to a new video file
+            segments = []
+            output_path = ""
+            video_index = 0
+            max_clips = await ConfigAdapter().get_config_int(token, event["id"], "MAX_CLIPS_PER_ENHANCED_VIDEO")
+            for video_stream_url, crossings_summary in video_stream_detections.items():
+                video_index += 1
+                crossings_summary["path"] = video_stream_url
+                segments.append(crossings_summary)
+                if (crossings_summary["last_frame"] < crossings_summary["total_frames"]) or (video_index >= max_clips):
+                    output_path = segments[0]["path"].replace("CAPTURE", "ENHANCE")
+                    PhotosFileAdapter().concatenate_video_segments(segments, output_path)
+                    segments.clear()  # Clear segments for the next video stream
+                    video_index = 0
+
+            # Update status and return result
             await ConfigAdapter().update_config(
-                token, event["id"], "VIDEO_ANALYTICS_RUNNING", "True"
+                token, event["id"], f"{mode}_VIDEO_SERVICE_RUNNING", "False"
             )
-        model = YOLO("yolov8n.pt")  # Load an official Detect model
-        image_size = (640, 480) # Set low image size for faster processing
-        video_stream_detections = {}
-        for video_stream_url in video_urls:
-
-            # Perform tracking with the model
-            clip_count += 1
-            try:
-                results = model.track(
-                    source=video_stream_url,
-                    conf=MIN_CONFIDENCE,
-                    classes=DETECTION_CLASSES,
-                    stream=True,
-                    imgsz=image_size,
-                    persist=True
-                )
-            except Exception as e:
-                informasjon = f"Error opening video stream from: {video_stream_url}"
-                logging.exception(informasjon)
-                raise VideoStreamNotFoundError(informasjon) from e
-
-            trigger_line_xyxyn = await VisionAIService().get_trigger_line_xyxy_list(
-                token, event
+            await StatusAdapter().create_status(
+                token,
+                event,
+                status_type,
+                f"Video capture completed. {clip_count} clips saved.",
             )
-            all_crossings = []
-            for result in results:
-                # get overview of people crossing the trigger line
-                logging.info(f"Processing video: {video_stream_url}")
-                all_crossings.append(
-                    self.get_all_crossings(result, trigger_line_xyxyn)
+
+            check_stop_tracking = await ConfigAdapter().get_config_bool(
+                token, event["id"], f"{mode}_VIDEO_SERVICE_STOP"
+            )
+            if check_stop_tracking:
+                await ConfigAdapter().update_config(
+                    token, event["id"], f"{mode}_VIDEO_SERVICE_STOP", "False"
                 )
-            # analyse results and identify crossings in the video stream
-            crossings_summary = self.get_crossings_summary(all_crossings)
-            video_stream_detections[video_stream_url] = crossings_summary
-
-        # Save the relevant clips to a new video file
-        segments = []
-        output_path = ""
-        for video_stream_url, crossings_summary in video_stream_detections.items():
-            crossings_summary["path"] = video_stream_url
-            segments.append(crossings_summary)
-        output_path = segments[0]["path"].replace("CAPTURE", "ENHANCE")
-        PhotosFileAdapter().concatenate_video_segments(segments, output_path)
-
-
-        # Update status and return result
-        await ConfigAdapter().update_config(
-            token, event["id"], f"{mode}_VIDEO_SERVICE_RUNNING", "False"
-        )
-        await StatusAdapter().create_status(
-            token,
-            event,
-            status_type,
-            f"Video capture completed. {clip_count} clips saved.",
-        )
+                break
         return f"Video capture completed. {clip_count} clips saved."
 
     def get_crossings_summary(self, crossings: list) -> dict:
@@ -241,14 +268,15 @@ class VideoService:
         i_count = 0
         i_first_detection = 0
         i_last_detection = 0
-        for crossing in crossings:
+
+        # get overview of persons moving - purpose is to ignore persons that are not moving
+        filtered_crossings = self.filter_crossings(crossings)
+
+        for crossing in filtered_crossings:
             i_count += 1
-            persons = sum(
-                len(crossing[key]) for key in crossing if key in ["100", "90", "80"]
-            )
-            crossings_summary["max_persons"] = max(crossings_summary["max_persons"], persons)
-            crossings_summary["min_persons"] = min(crossings_summary["min_persons"], persons)
-            if persons > 0:
+            crossings_summary["max_persons"] = max(crossings_summary["max_persons"], crossing["persons_count"])
+            crossings_summary["min_persons"] = min(crossings_summary["min_persons"], crossing["persons_count"])
+            if crossing["persons_count"] > 0:
                 if i_first_detection == 0:
                     i_first_detection = i_count
                 i_last_detection = i_count
@@ -257,13 +285,111 @@ class VideoService:
         crossings_summary["total_frames"] = i_count
         return crossings_summary
 
-    def get_all_crossings(self, result: Results, trigger_line: list) -> dict:
+    def filter_crossings(self, crossings: list) -> list:
+        """Filter out persons whose average speed is less than 10% of the overall average speed.
+
+        Args:
+            crossings (list): List of frame dicts, each with 'details' containing person info.
+
+        Returns:
+            list: Filtered crossings list.
+
+        """
+        # Get movement summary
+        person_summary = self.summarize_person_movement(crossings)
+        avg_speed = person_summary["avg_speed"]
+        detail_dict = person_summary["detail_dict"]
+
+        # Calculate speed threshold (10% of average)
+        speed_threshold = 0.1 * avg_speed if avg_speed > 0 else 0
+
+        # Build a set of person IDs to keep
+        keep_ids = {pid for pid, d in detail_dict.items() if d["avg_speed"] >= speed_threshold}
+
+        # Filter each frame's details
+        filtered_crossings = []
+        for frame in crossings:
+            filtered_details = [d for d in frame["details"] if d["id"] in keep_ids]
+            filtered_frame = frame.copy()
+            filtered_frame["details"] = filtered_details
+            filtered_frame["persons_count"] = len(filtered_details)
+            filtered_crossings.append(filtered_frame)
+
+        return filtered_crossings
+
+    def summarize_person_movement(self, frames: list) -> dict:
+        """Summarize detected persons: count frames visible and estimate average speed.
+
+        Args:
+            frames (list): List of frame dicts as described.
+
+        Returns:
+            dict: {person_id: {"frames_visible": int, "avg_speed": float}}
+
+        """
+        import math
+        from collections import defaultdict
+
+        person_summary = {
+            "avg_speed": 0.0,
+            "persons_count": 0,
+            "detail_dict": {},
+        }
+        _tmp_speed = 0.0
+
+        person_tracks = defaultdict(list)
+
+        # Collect all positions for each person
+        for frame in frames:
+            frame_id = frame["frame_id"]
+            for detail in frame["details"]:
+                pid = detail["id"]
+                center = detail["center"]
+                person_tracks[pid].append((frame_id, center))
+
+        summary = {}
+        for pid, _track in person_tracks.items():
+            track = sorted(_track)  # sort by frame_id
+            frames_visible = len(track)
+            # Calculate total distance and total frames
+            total_dist = 0.0
+            total_frames = 0
+            for i in range(1, len(track)):
+                prev_frame, prev_center = track[i-1]
+                curr_frame, curr_center = track[i]
+                # Euclidean distance in normalized coordinates
+                dist = math.sqrt(
+                    (curr_center[0] - prev_center[0]) ** 2 +
+                    (curr_center[1] - prev_center[1]) ** 2
+                )
+                frame_gap = curr_frame - prev_frame
+                if frame_gap > 0:
+                    total_dist += dist
+                    total_frames += frame_gap
+            avg_speed = (total_dist / total_frames) if total_frames > 0 else 0.0
+            summary[pid] = {
+                "frames_visible": frames_visible,
+                "avg_speed": avg_speed
+            }
+            person_summary["persons_count"] += 1
+            _tmp_speed += avg_speed
+            person_summary["detail_dict"] = summary
+
+        person_summary["avg_speed"] = (
+            _tmp_speed / person_summary["persons_count"]
+            if person_summary["persons_count"] > 0
+            else 0.0
+        )
+
+        return person_summary
+
+    def get_all_crossings(self, frame_id: int, result: Results, trigger_line: list) -> dict:
         """Analyze result from video analytics to determine crossings."""
         crossings = {
-            "100": [],
-            "90": [],
-            "80": [],
-        }
+            "frame_id": frame_id,
+            "persons_count": 0,
+            "details": []
+            }
         boxes = result.boxes
         if boxes:
             class_values = boxes.cls
@@ -283,12 +409,33 @@ class VideoService:
                             xyxyn, trigger_line
                         )
                         if crossed_line != "false":
-                            if d_id not in crossings[crossed_line]:
-                                crossings[crossed_line].append(d_id)
+                            _crossing_details = {
+                                "id": d_id,
+                                "center": self.get_box_center(xyxyn),
+                                "crossed_line": crossed_line,
+                            }
+                            crossings["details"].append(_crossing_details)
+                            crossings["persons_count"] += 1
                 except TypeError as e:
                     logging.debug(f"TypeError: {e}")
                     # ignore
         return crossings
+
+
+    def get_box_center(self, xyxyn: Tensor) -> tuple[float, float]:
+        """Get the center (x, y) coordinates of a bounding box in normalized YOLO format.
+
+        Args:
+            xyxyn (Tensor): Bounding box in [x1, y1, x2, y2] normalized format.
+
+        Returns:
+            tuple: (x_center, y_center) in normalized coordinates (0.0 - 1.0)
+
+        """
+        x1, y1, x2, y2 = xyxyn.tolist()
+        x_center = (x1 + x2) / 2
+        y_center = (y1 + y2) / 2
+        return x_center, y_center
 
 
     def validate_box(self, xyxyn: Tensor) -> bool:

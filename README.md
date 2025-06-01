@@ -9,7 +9,7 @@ Configuration from database (default values in global_settings.json) will always
 source .venv/bin/activate
 .venv/bin/python3 -m video_service.app
 Dependencies (services & db):
-docker-compose up event-service user-service photo-service mongodb
+docker compose up event-service user-service photo-service mongodb
 
 ### Requirement for development
 
@@ -68,7 +68,7 @@ To run tests with logging, do:
 
 ### Push to docker registry manually (CLI)
 
-docker-compose build
+docker compose build
 docker login ghcr.io -u github
 password: Use a generated access token from GitHub (https://github.com/settings/tokens/1878556677)
 docker tag ghcr.io/langrenn-sprint/video-service:test ghcr.io/langrenn-sprint/video-service:latest

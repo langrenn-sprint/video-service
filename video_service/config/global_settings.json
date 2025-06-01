@@ -16,6 +16,8 @@
     "VIDEO_SERVICE_STATUS_TYPE": "video_status",
     "VIDEO_ANALYTICS_IMAGE_SIZE": "640x480",
     "VIDEO_CLIP_DURATION": 5,
+    "VIDEO_CLIP_FPS": 5,
+    "MAX_CLIPS_PER_ENHANCED_VIDEO": 10,
     "VIDEO_URL": "https://harnaes.no/maalfoto/2023SkiMaal.mp4",
     "VIDEO_URL2": "/home/heming/Nedlastinger/20250525_GKOpp1.mp4"
 }

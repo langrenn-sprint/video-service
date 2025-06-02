@@ -15,6 +15,14 @@ PHOTOS_URL_PATH = "files"
 class PhotosFileAdapter:
     """Class representing photos."""
 
+    def get_photos_folder_path(self) -> str:
+        """Get path to photo folder."""
+        return PHOTOS_FILE_PATH
+
+    def get_photos_archive_folder_path(self) -> str:
+        """Get path to photo archive folder."""
+        return PHOTOS_ARCHIVE_PATH
+
     def get_all_photos(self) -> list:
         """Get all path/filename to all photos on file directory."""
         photos = []
@@ -66,26 +74,11 @@ class PhotosFileAdapter:
             trigger_line_file_name = trigger_line_files[0]
             if len(trigger_line_files) > 1:
                 for f in trigger_line_files[1:]:
-                    move_to_archive(f.name)
+                    self.move_to_archive(f.name)
 
         except Exception:
             logging.exception("Error getting photos")
         return f"{PHOTOS_URL_PATH}/{trigger_line_file_name}"
-
-    def move_photo_to_archive(self, filename: str) -> None:
-        """Move photo to archive."""
-        source_file = Path(PHOTOS_FILE_PATH) / filename
-        destination_file = Path(PHOTOS_ARCHIVE_PATH) / source_file.name
-
-        try:
-            source_file.rename(destination_file)
-        except FileNotFoundError:
-            logging.info("Destination folder not found. Creating...")
-            Path(PHOTOS_ARCHIVE_PATH).mkdir(parents=True, exist_ok=True)
-            source_file.rename(destination_file)
-        except Exception:
-            logging.exception("Error moving photo to archive.")
-
 
     def concatenate_video_segments(self, video_segments: list, output_path: str) -> str:
         """Concatenate segments from multiple videos into one video.
@@ -132,19 +125,19 @@ class PhotosFileAdapter:
 
         # archive the input videos
         for segment in video_segments:
-            move_to_archive(Path(segment["path"]).name)
+            self.move_to_archive(Path(segment["path"]).name)
         return output_path
 
-def move_to_archive(filename: str) -> None:
-    """Move photo to archive."""
-    source_file = Path(PHOTOS_FILE_PATH) / filename
-    destination_file = Path(PHOTOS_ARCHIVE_PATH) / source_file.name
+    def move_to_archive(self, filename: str) -> None:
+        """Move photo to archive."""
+        source_file = Path(PHOTOS_FILE_PATH) / filename
+        destination_file = Path(PHOTOS_ARCHIVE_PATH) / source_file.name
 
-    try:
-        source_file.rename(destination_file)
-    except FileNotFoundError:
-        logging.info("Destination folder not found. Creating...")
-        Path(PHOTOS_ARCHIVE_PATH).mkdir(parents=True, exist_ok=True)
-        source_file.rename(destination_file)
-    except Exception:
-        logging.exception("Error moving photo to archive.")
+        try:
+            source_file.rename(destination_file)
+        except FileNotFoundError:
+            logging.info("Destination folder not found. Creating...")
+            Path(PHOTOS_ARCHIVE_PATH).mkdir(parents=True, exist_ok=True)
+            source_file.rename(destination_file)
+        except Exception:
+            logging.exception("Error moving photo to archive.")

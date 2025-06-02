@@ -71,7 +71,6 @@ async def main() -> None:
 
         i = STATUS_INTERVAL
         while True:
-            await run_the_video_service(token, event)
             if i > STATUS_INTERVAL:
                 informasjon = f"video-service er klar til å starte analyse, mode {MODE}."
                 await StatusAdapter().create_status(
@@ -80,6 +79,7 @@ async def main() -> None:
                 i = 0
             else:
                 i += 1
+            await run_the_video_service(token, event)
             await asyncio.sleep(2)
 
     except Exception as e:
@@ -110,6 +110,10 @@ async def run_the_video_service(token: str, event: dict) -> None:
                 )
             elif MODE == "ENHANCE":
                 await VideoService().enhance_video(
+                    token, event, status_type
+                )
+            elif MODE == "DETECT":
+                await VideoService().detect_crossings(
                     token, event, status_type
                 )
         elif video_config["video_running"]:

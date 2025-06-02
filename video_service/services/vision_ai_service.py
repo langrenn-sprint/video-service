@@ -12,10 +12,13 @@ from ultralytics.engine.results import Results
 
 from video_service.adapters import (
     ConfigAdapter,
-    StatusAdapter,
+    PhotosFileAdapter,
 )
 
 COUNT_COORDINATES = 4
+DETECTION_BOX_MINIMUM_SIZE = 0.08
+DETECTION_BOX_MAXIMUM_SIZE = 0.9
+EDGE_MARGIN = 0.02
 
 
 class VisionAIService:
@@ -55,26 +58,6 @@ class VisionAIService:
         crop_file_name = f"{file_name}_crop.jpg"
         cv2.imwrite(crop_file_name, combined_image)
 
-    async def check_stop_tracking(
-        self, token: str, event: dict, status_type: str
-    ) -> bool:
-        """Check status flags and determine if tracking should continue."""
-        stop_tracking = await ConfigAdapter().get_config_bool(
-            token, event["id"], "VIDEO_ANALYTICS_STOP"
-        )
-        if stop_tracking:
-            await StatusAdapter().create_status(
-                token, event, status_type, "Video analytics stopped."
-            )
-            await ConfigAdapter().update_config(
-                token, event["id"], "VIDEO_ANALYTICS_RUNNING", "False"
-            )
-            await ConfigAdapter().update_config(
-                token, event["id"], "VIDEO_ANALYTICS_STOP", "False"
-            )
-            return True
-        return False
-
     def get_image_info(self, camera_location: str, time_text: str) -> bytes:
         """Create image info EXIF data."""
         # set the params
@@ -105,22 +88,103 @@ class VisionAIService:
             raise Exception(informasjon)
         return trigger_line_xyxy_list
 
+    def process_boxes(self, result: Results, trigger_line: list, crossings: dict, camera_location: str) -> None:
+        """Process result from video analytics."""
+        boxes = result.boxes
+        if boxes:
+            class_values = boxes.cls
+
+            for y in range(len(class_values)):
+                try:
+
+                    d_id = int(boxes.id[y].item())  # type: ignore[attr-defined]
+                    # identify person - class value 0
+                    if (class_values[y] == 0):
+                        xyxyn = boxes.xyxyn[y]
+                        crossed_line = self.is_below_line(
+                            xyxyn, trigger_line
+                        )
+                        # ignore small boxes
+                        box_validation = self.validate_box(xyxyn)
+                        if (crossed_line != "false") and box_validation:
+                            # Extract screenshot image from the results
+                            xyxy = boxes.xyxy[y]
+                            if crossed_line != "100":
+                                if d_id not in crossings[crossed_line]:
+                                    crossings[crossed_line][d_id] = (
+                                        VisionAIService().get_crop_image(result.orig_img, xyxy)
+                                    )
+                            elif d_id not in crossings[crossed_line]:
+                                crossings[crossed_line].append(d_id)
+                                VisionAIService().save_image(
+                                    result,
+                                    camera_location,
+                                    d_id,
+                                    crossings,
+                                    xyxy,
+                                )
+
+                except TypeError as e:
+                    logging.debug(f"TypeError: {e}")
+
+    def validate_box(self, xyxyn: Tensor) -> bool:
+        """Filter out boxes not relevant."""
+        box_validation = True
+        box_with = xyxyn.tolist()[2] - xyxyn.tolist()[0]
+        box_heigth = xyxyn.tolist()[3] - xyxyn.tolist()[1]
+
+        # check if box is too small and at the edge
+        if (box_with < DETECTION_BOX_MINIMUM_SIZE) or (box_heigth < DETECTION_BOX_MINIMUM_SIZE):
+            if (xyxyn.tolist()[2] > (1 - EDGE_MARGIN)) or (xyxyn.tolist()[3] > (1 - EDGE_MARGIN)):
+                return False
+
+        if (box_with > DETECTION_BOX_MAXIMUM_SIZE) or (box_heigth > DETECTION_BOX_MAXIMUM_SIZE):
+            return False
+
+        return box_validation
+
+    def is_below_line(self, xyxyn: Tensor, trigger_line: list) -> str:
+        """Check if a point is below a trigger line."""
+        x_center_pos = (xyxyn.tolist()[2] + xyxyn.tolist()[0]) / 2
+        y_lower_pos = xyxyn.tolist()[3]
+        x1 = trigger_line[0]
+        y1 = trigger_line[1]
+        x2 = trigger_line[2]
+        y2 = trigger_line[3]
+        # check if more than half of the box is outside line x values
+        if (x_center_pos < x1) or (x_center_pos > x2):
+            return "false"
+        # get line derivated
+        a = (y2 - y1) / (x2 - x1)
+        # get line y value at point x and check if point y is below
+        y = a * (x_center_pos - x1) + y1
+        y_80 = a * (x_center_pos - x1) + (y1 * 0.8)
+        y_90 = a * (x_center_pos - x1) + (y1 * 0.9)
+        if y_lower_pos > y:
+            return "100"
+        if y_lower_pos > y_90:
+            return "90"
+        if y_lower_pos > y_80:
+            return "80"
+        return "false"
+
+
     def save_image(
         self,
         result: Results,
         camera_location: str,
-        photos_file_path: str,
         d_id: int,
         crossings: dict,
         xyxy: Tensor,
     ) -> None:
         """Save image and crop_images to file."""
-        logging.info(f"Line crossing! ID:{d_id} {photos_file_path}")
+        logging.info(f"Line crossing! ID:{d_id}")
         current_time = datetime.datetime.now(datetime.UTC)
         time_text = current_time.strftime("%Y%m%d %H:%M:%S")
 
         # save image to file - full size
         timestamp = current_time.strftime("%Y%m%d_%H%M%S")
+        photos_file_path = PhotosFileAdapter().get_photos_folder_path()
         file_name = f"{photos_file_path}/{camera_location}_{timestamp}_{d_id}.jpg"
         cv2.imwrite(f"{file_name}", result.orig_img)
 

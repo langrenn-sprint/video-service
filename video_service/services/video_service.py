@@ -2,6 +2,7 @@
 
 import datetime
 import logging
+from pathlib import Path
 
 import cv2
 from torch import Tensor
@@ -19,12 +20,9 @@ from video_service.services.vision_ai_service import (
 )
 
 VIDEO_SUFFIX = ".avi"
-DETECTION_BOX_MINIMUM_SIZE = 0.08
-DETECTION_BOX_MAXIMUM_SIZE = 0.9
-EDGE_MARGIN = 0.02
-MIN_CONFIDENCE = 0.6
 DETECTION_CLASSES = [0]  # person
 MAX_CLIPS_TO_CONCATENATE = 10  # maximum number of clips per enhanced video
+MIN_CONFIDENCE = 0.6
 
 class VideoService:
     """Class representing video service."""
@@ -170,7 +168,7 @@ class VideoService:
         mode = "ENHANCE"
         informasjon = ""
         await ConfigAdapter().update_config(
-            token, event["id"], "ENHANCE_VIDEO_SERVICE_START", "False"
+            token, event["id"], f"{mode}_VIDEO_SERVICE_START", "False"
         )
 
         while True:
@@ -181,7 +179,7 @@ class VideoService:
             video_urls = PhotosFileAdapter().get_all_files("CAPTURE", VIDEO_SUFFIX)
             if video_urls:
                 await ConfigAdapter().update_config(
-                    token, event["id"], "VIDEO_ANALYTICS_RUNNING", "True"
+                    token, event["id"], f"{mode}_VIDEO_SERVICE_RUNNING", "True"
                 )
             model = YOLO("yolov8n.pt")  # Load an official Detect model
             image_size = (640, 480) # Set low image size for faster processing
@@ -243,7 +241,7 @@ class VideoService:
                 token,
                 event,
                 status_type,
-                f"Video capture completed. {clip_count} clips saved.",
+                f"Video enhance completed. {clip_count} clips saved.",
             )
 
             check_stop_tracking = await ConfigAdapter().get_config_bool(
@@ -254,7 +252,70 @@ class VideoService:
                     token, event["id"], f"{mode}_VIDEO_SERVICE_STOP", "False"
                 )
                 break
-        return f"Video capture completed. {clip_count} clips saved."
+        return f"Video enhance completed. {clip_count} clips saved."
+
+
+    async def detect_crossings(
+        self,
+        token: str,
+        event: dict,
+        status_type: str,
+    ) -> str:
+        """Detect crossing video from enhanced video clips.
+
+        Screenshots with crossings are taken. The video archived.
+
+        Args:
+            token: To update databes
+            event: Event details
+            status_type: To update status messages
+
+        Returns:
+            A string indicating the status of the video analytics.
+
+        Raises:
+            VideoStreamNotFoundError: If the video stream cannot be found.
+
+        """
+        mode = "DETECT"
+        await ConfigAdapter().update_config(
+            token, event["id"], f"{mode}_VIDEO_SERVICE_START", "False"
+        )
+        crossings_count = 0
+
+        while True:
+
+            # Open the video stream for enhanced video clips
+            video_urls = PhotosFileAdapter().get_all_files("ENHANCE", VIDEO_SUFFIX)
+            if video_urls:
+                await ConfigAdapter().update_config(
+                    token, event["id"], f"{mode}_VIDEO_SERVICE_RUNNING", "True"
+                )
+            for video_stream_url in video_urls:
+                await self.detect_crossings_with_ultraltyics(token, event, video_stream_url)
+                PhotosFileAdapter().move_to_archive(Path(video_stream_url).name)
+
+
+            # Update status and return result
+            await ConfigAdapter().update_config(
+                token, event["id"], f"{mode}_VIDEO_SERVICE_RUNNING", "False"
+            )
+            await StatusAdapter().create_status(
+                token,
+                event,
+                status_type,
+                f"Crossings detection completed. {crossings_count} crossings saved.",
+            )
+
+            check_stop_tracking = await ConfigAdapter().get_config_bool(
+                token, event["id"], f"{mode}_VIDEO_SERVICE_STOP"
+            )
+            if check_stop_tracking:
+                await ConfigAdapter().update_config(
+                    token, event["id"], f"{mode}_VIDEO_SERVICE_STOP", "False"
+                )
+                break
+        return f"Crossings detection completed. {crossings_count} crossings saved."
 
     def get_crossings_summary(self, crossings: list) -> dict:
         """Analyze crossings and get overview of frames with relevant information."""
@@ -403,9 +464,9 @@ class VideoService:
                     if (
                         (class_values[y] == 0)
                         and (boxes.conf[y].item() > MIN_CONFIDENCE)
-                        and self.validate_box(xyxyn)
+                        and VisionAIService().validate_box(xyxyn)
                     ):
-                        crossed_line = self.is_below_line(
+                        crossed_line = VisionAIService().is_below_line(
                             xyxyn, trigger_line
                         )
                         if crossed_line != "false":
@@ -437,123 +498,69 @@ class VideoService:
         y_center = (y1 + y2) / 2
         return x_center, y_center
 
-
-    def validate_box(self, xyxyn: Tensor) -> bool:
-        """Filter out boxes not relevant."""
-        box_validation = True
-        box_with = xyxyn.tolist()[2] - xyxyn.tolist()[0]
-        box_heigth = xyxyn.tolist()[3] - xyxyn.tolist()[1]
-
-        # check if box is too small and at the edge
-        if (box_with < DETECTION_BOX_MINIMUM_SIZE) or (box_heigth < DETECTION_BOX_MINIMUM_SIZE):
-            if (xyxyn.tolist()[2] > (1 - EDGE_MARGIN)) or (xyxyn.tolist()[3] > (1 - EDGE_MARGIN)):
-                return False
-
-        if (box_with > DETECTION_BOX_MAXIMUM_SIZE) or (box_heigth > DETECTION_BOX_MAXIMUM_SIZE):
-            return False
-
-        return box_validation
-
-    def is_below_line(self, xyxyn: Tensor, trigger_line: list) -> str:
-        """Check if a point is below a trigger line."""
-        x_center_pos = (xyxyn.tolist()[2] + xyxyn.tolist()[0]) / 2
-        y_lower_pos = xyxyn.tolist()[3]
-        x1 = trigger_line[0]
-        y1 = trigger_line[1]
-        x2 = trigger_line[2]
-        y2 = trigger_line[3]
-        # check if more than half of the box is outside line x values
-        if (x_center_pos < x1) or (x_center_pos > x2):
-            return "false"
-        # get line derivated
-        a = (y2 - y1) / (x2 - x1)
-        # get line y value at point x and check if point y is below
-        y = a * (x_center_pos - x1) + y1
-        y_80 = a * (x_center_pos - x1) + (y1 * 0.8)
-        y_90 = a * (x_center_pos - x1) + (y1 * 0.9)
-        if y_lower_pos > y:
-            return "100"
-        if y_lower_pos > y_90:
-            return "90"
-        if y_lower_pos > y_80:
-            return "80"
-        return "false"
-
-    async def print_image_with_trigger_line_v2(
+    async def detect_crossings_with_ultraltyics(
         self,
         token: str,
         event: dict,
-        status_type: str,
-        photos_file_path: str,
-    ) -> None:
-        """Print an image with a trigger line."""
-        trigger_line_xyxyn = await VisionAIService().get_trigger_line_xyxy_list(
-            token, event
+        video_stream_url: str,
+    ) -> str:
+        """Analyze video and capture screenshots of line crossings.
+
+        Args:
+            token: To update databes
+            event: Event details
+            video_stream_url: Url to the video stream to analyze.
+
+        Returns:
+            A string indicating the status of the video analytics.
+
+        Raises:
+            VideoStreamNotFoundError: If the video stream cannot be found.
+
+        """
+        crossings = {"100": [], "90": {}, "80": {}}
+        informasjon = ""
+        camera_location = await ConfigAdapter().get_config(
+            token, event["id"], "CAMERA_LOCATION"
         )
-        video_stream_url = await ConfigAdapter().get_config(token, event["id"], "VIDEO_URL")
 
-        cap = cv2.VideoCapture(video_stream_url)
-        # check if video stream is opened
-        if not cap.isOpened():
-            informasjon = f"Error opening video stream from: {video_stream_url}"
-            logging.error(informasjon)
-            raise VideoStreamNotFoundError(informasjon) from None
+        # Load an official or custom model
+        model = YOLO("yolov8n.pt")  # Load an official Detect model
+
+        # Define the desired image size as a tuple (width, height)
+        image_size = await ConfigAdapter().get_config_img_res_tuple(
+            token, event["id"], "VIDEO_ANALYTICS_IMAGE_SIZE"
+        )
+        trigger_line = (
+            await VisionAIService().get_trigger_line_xyxy_list(
+                token, event
+            )
+        )
+        await ConfigAdapter().update_config(
+            token, event["id"], "VIDEO_ANALYTICS_RUNNING", "True"
+        )
+
+        # Perform tracking with the model
         try:
-            # Show the results
-            ret_save, im = cap.read()
-            # Convert the frame to RBG
-            im_rgb = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
-
-            # Draw the trigger line
-            x1, y1, x2, y2 = map(float, trigger_line_xyxyn)  # Ensure integer coordinates
-            cv2.line(
-                im_rgb,
-                (int(x1 * im.shape[1]), int(y1 * im.shape[0])),
-                (int(x2 * im.shape[1]), int(y2 * im.shape[0])),
-                (255, 0, 0),  # Color (BGR)
-                5
-            )  # Thickness
-
-            # Draw the grid lines
-            for x in range(10, 100, 10):
-                cv2.line(
-                    im_rgb,
-                    (int(x * im.shape[1] / 100), 0),
-                    (int(x * im.shape[1] / 100), im.shape[0]),
-                    (255, 255, 255),
-                    1
-                )
-            for y in range(10, 100, 10):
-                cv2.line(
-                    im_rgb,
-                    (0, int(y * im.shape[0] / 100)),
-                    (im.shape[1], int(y * im.shape[0] / 100)),
-                    (255, 255, 255),
-                    1
-                )
-
-            # Add text (using OpenCV)
-            font_face = 1
-            font_scale = 1
-            font_color = (255, 0, 0)  # red
-
-            # get the current time with timezone
-            current_time = datetime.datetime.now(datetime.UTC)
-            time_text = current_time.strftime("%Y%m%d_%H%M%S")
-            image_time_text = (
-                f"Line coordinates: {trigger_line_xyxyn}. Time: {time_text}"
+            results = model.track(
+                source=video_stream_url,
+                conf=MIN_CONFIDENCE,
+                classes=DETECTION_CLASSES,
+                stream=True,
+                imgsz=image_size,
+                persist=True
             )
-            cv2.putText(im_rgb, image_time_text, (50, 50), font_face, font_scale, font_color, 2, cv2.LINE_AA)
+        except Exception as e:
+            informasjon = f"Error opening video stream from: {video_stream_url}"
+            logging.exception(informasjon)
+            raise VideoStreamNotFoundError(informasjon) from e
 
-            # save image to file
-            trigger_line_config_file = await ConfigAdapter().get_config(
-                token, event["id"], "TRIGGER_LINE_CONFIG_FILE"
-            )
-            file_name = f"{photos_file_path}/{time_text}_{trigger_line_config_file}"
-            cv2.imwrite(file_name, cv2.cvtColor(im_rgb, cv2.COLOR_RGB2BGR))  # Convert back to BGR for saving
-            informasjon = f"Trigger line <a title={file_name}>photo</a> created."
-            await StatusAdapter().create_status(token, event, status_type, informasjon)
+        for result in results:
+            VisionAIService().process_boxes(result, trigger_line, crossings, camera_location)
 
-        except TypeError as e:
-            logging.debug(f"TypeError: {e}")
-            # ignore
+        await ConfigAdapter().update_config(
+            token, event["id"], "VIDEO_ANALYTICS_RUNNING", "false"
+        )
+
+        return f"Analytics completed {informasjon}."
+

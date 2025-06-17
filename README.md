@@ -1,17 +1,14 @@
 # video-service
 A service to capture relevant video clips from an online camera. The service can run as workers in 3 modes
-Mode CAPTURE: Pure capture of a stream, save as video clips in configurable resolution and duration.
-Mode ENHANCE: Post processing of output from mode CAPTURE. Only video clips with moving persons will be kept. Video clips will also be adapted so that clipping is done at appropriate time.
-Mode DETECT: Line crossing detection. The service can run as stand alone worker or take input from worker CAPTURE or ENHANCE.
+### CAPTURE
+Capture of a stream, save as video clips in configurable resolution and duration.
+### ENHANCE
+Post processing of output from mode CAPTURE. Only video clips with moving persons will be kept. Video clips will also be adapted so that clipping is done at appropriate time.
+### DETECT
+Line crossing detection. The service can run as stand alone worker or take input from worker CAPTURE or ENHANCE.
 Configuration from database (default values in global_settings.json) will always be shared between the workers wile each workers mode will be defined through environment (env) configuration.
 
-### Start service
-source .venv/bin/activate
-.venv/bin/python3 -m video_service.app
-Dependencies (services & db):
-docker compose up event-service user-service photo-service mongodb
-
-### Requirement for development
+## Requirement for development
 
 Install [uv](https://docs.astral.sh/uv/), e.g.:
 
@@ -65,6 +62,15 @@ To run tests with logging, do:
 ```Zsh
 % uv run pytest -m integration -- --log-cli-level=DEBUG
 ```
+
+### Start service
+```Zsh
+source .venv/bin/activate
+.venv/bin/python3 -m video_service.app
+Dependencies (services & db):
+docker compose up event-service user-service photo-service mongodb
+```
+
 
 ### Push to docker registry manually (CLI)
 

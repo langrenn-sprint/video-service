@@ -79,3 +79,14 @@ docker login ghcr.io -u github
 password: Use a generated access token from GitHub (https://github.com/settings/tokens/1878556677)
 docker tag ghcr.io/langrenn-sprint/video-service:test ghcr.io/langrenn-sprint/video-service:latest
 docker push ghcr.io/langrenn-sprint/video-service:latest
+
+
+### Troubleshooting
+Failed to create DNS resolver channel with automatic monitoring of resolver configuration changes.
+```Zsh
+echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
+```
+
+```Zsh
+```

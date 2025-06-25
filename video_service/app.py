@@ -80,7 +80,7 @@ async def main() -> None:
             else:
                 i += 1
             await run_the_video_service(token, event)
-            await asyncio.sleep(2)
+            await asyncio.sleep(1)
 
     except Exception as e:
         err_string = str(e)
@@ -99,11 +99,7 @@ async def run_the_video_service(token: str, event: dict) -> None:
     video_config = {}
     video_config = await get_config(token, event["id"], MODE)
     try:
-        if video_config["stop_tracking"]:
-            await ConfigAdapter().update_config(
-                token, event["id"], f"{MODE}_VIDEO_SERVICE_STOP", "False"
-            )
-        elif video_config["video_start"]:
+        if video_config["video_start"]:
             if MODE == "CAPTURE":
                 await VideoService().capture_video(
                     token, event, status_type, video_file_path
@@ -195,13 +191,9 @@ async def get_config(token: str, event_id: str, mode: str) -> dict:
     video_start = await ConfigAdapter().get_config_bool(
         token, event_id, f"{mode}_VIDEO_SERVICE_START"
     )
-    stop_tracking = await ConfigAdapter().get_config_bool(
-        token, event_id, f"{mode}_VIDEO_SERVICE_STOP"
-    )
     return {
         "video_running": video_running,
         "video_start": video_start,
-        "stop_tracking": stop_tracking,
     }
 
 

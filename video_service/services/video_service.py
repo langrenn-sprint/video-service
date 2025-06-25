@@ -2,6 +2,8 @@
 
 import datetime
 import logging
+import math
+from collections import defaultdict
 from pathlib import Path
 
 import cv2
@@ -388,9 +390,6 @@ class VideoService:
             dict: {person_id: {"frames_visible": int, "avg_speed": float}}
 
         """
-        import math
-        from collections import defaultdict
-
         person_summary = {
             "avg_speed": 0.0,
             "persons_count": 0,

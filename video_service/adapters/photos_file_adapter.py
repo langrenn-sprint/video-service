@@ -27,9 +27,10 @@ class PhotosFileAdapter:
         """Get all path/filename to all photos on file directory."""
         photos = []
         try:
+            files = list(Path(PHOTOS_FILE_PATH).iterdir())
             photos = [
                 f"{PHOTOS_FILE_PATH}/{f.name}"
-                for f in Path(PHOTOS_FILE_PATH).iterdir()
+                for f in files
                 if f.suffix in [".jpg", ".png"] and "_config" not in f.name
             ]
         except Exception:
@@ -40,9 +41,10 @@ class PhotosFileAdapter:
         """Get all url to all files on file directory with given prefix and suffix."""
         my_files = []
         try:
+            files = list(Path(PHOTOS_FILE_PATH).iterdir())  # Materialize iterator and close it
             my_files = [
                 f"{PHOTOS_FILE_PATH}/{file.name}"
-                for file in Path(PHOTOS_FILE_PATH).iterdir()
+                for file in files
                 if file.suffix == suffix and prefix in file.name
             ]
         except Exception:
@@ -57,7 +59,7 @@ class PhotosFileAdapter:
         trigger_line_file_name = ""
         try:
             # Lists files in a directory sorted by creation date, newest first."""
-            files = Path(PHOTOS_FILE_PATH).iterdir()
+            files = list(Path(PHOTOS_FILE_PATH).iterdir())  # Materialize iterator and close it
             files_with_ctime = [
                 (f, (Path(PHOTOS_FILE_PATH) / f).stat().st_ctime) for f in files
             ]
@@ -67,7 +69,6 @@ class PhotosFileAdapter:
             trigger_line_files = [
                 f for f in sorted_files if file_identifier in f.name
             ]
-
             # Return url to newest file, archive
             if len(trigger_line_files) == 0:
                 return ""
@@ -97,28 +98,30 @@ class PhotosFileAdapter:
         writer = None
         for segment in video_segments:
             cap = cv2.VideoCapture(segment["path"])
-            if not cap.isOpened():
-                information = f"Error opening video file: {segment['path']}"
-                raise ValueError(information)
+            try:
+                if not cap.isOpened():
+                    information = f"Error opening video file: {segment['path']}"
+                    raise ValueError(information)
 
-            # Get video properties
-            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            fps = cap.get(cv2.CAP_PROP_FPS)
-            fourcc = cv2.VideoWriter.fourcc(*"XVID")
+                # Get video properties
+                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                fourcc = cv2.VideoWriter.fourcc(*"XVID")
 
-            # Initialize writer if not already done
-            if writer is None:
-                writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+                # Initialize writer if not already done
+                if writer is None:
+                    writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
-            # Set to first frame
-            cap.set(cv2.CAP_PROP_POS_FRAMES, segment["first_frame"])
-            for _frame_idx in range(segment["first_frame"], segment["last_frame"] + 1):
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                writer.write(frame)
-            cap.release()
+                # Set to first frame
+                cap.set(cv2.CAP_PROP_POS_FRAMES, segment["first_frame"])
+                for _frame_idx in range(segment["first_frame"], segment["last_frame"] + 1):
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    writer.write(frame)
+            finally:
+                cap.release()
 
         if writer is not None:
             writer.release()

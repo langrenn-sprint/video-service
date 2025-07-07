@@ -173,68 +173,68 @@ class VideoService:
             await ConfigAdapter().update_config(
                 token, event["id"], f"{mode}_VIDEO_SERVICE_RUNNING", "True"
             )
-        model = YOLO("yolov8n.pt")  # Load an official Detect model
-        image_size = (640, 480) # Set low image size for faster processing
-        video_stream_detections = {}
-        for video_stream_url in video_urls:
+            model = YOLO("yolov8n.pt")  # Load an official Detect model
+            image_size = (640, 480) # Set low image size for faster processing
+            video_stream_detections = {}
+            for video_stream_url in video_urls:
 
-            # Perform tracking with the model
-            clip_count += 1
-            if clip_count > MAX_CLIPS_TO_CONCATENATE:
-                break
-            try:
-                results = model.track(
-                    source=video_stream_url,
-                    conf=MIN_CONFIDENCE,
-                    classes=DETECTION_CLASSES,
-                    stream=True,
-                    imgsz=image_size,
-                    persist=True
+                # Perform tracking with the model
+                clip_count += 1
+                if clip_count > MAX_CLIPS_TO_CONCATENATE:
+                    break
+                try:
+                    results = model.track(
+                        source=video_stream_url,
+                        conf=MIN_CONFIDENCE,
+                        classes=DETECTION_CLASSES,
+                        stream=True,
+                        imgsz=image_size,
+                        persist=True
+                    )
+                except Exception as e:
+                    informasjon = f"Error opening video stream from: {video_stream_url}"
+                    logging.exception(informasjon)
+                    raise VideoStreamNotFoundError(informasjon) from e
+
+                trigger_line_xyxyn = await VisionAIService().get_trigger_line_xyxy_list(
+                    token, event
                 )
-            except Exception as e:
-                informasjon = f"Error opening video stream from: {video_stream_url}"
-                logging.exception(informasjon)
-                raise VideoStreamNotFoundError(informasjon) from e
+                all_crossings = []
+                for result in results:
+                    # get overview of people crossing the trigger line
+                    frame_count += 1
+                    all_crossings.append(
+                        self.get_all_crossings(frame_count, result, trigger_line_xyxyn)
+                    )
+                # analyse results and identify crossings in the video stream
+                crossings_summary = self.get_crossings_summary(all_crossings)
+                video_stream_detections[video_stream_url] = crossings_summary
 
-            trigger_line_xyxyn = await VisionAIService().get_trigger_line_xyxy_list(
-                token, event
+            # Save the relevant clips to a new video file
+            segments = []
+            output_path = ""
+            video_index = 0
+            max_clips = await ConfigAdapter().get_config_int(token, event["id"], "MAX_CLIPS_PER_ENHANCED_VIDEO")
+            for video_stream_url, crossings_summary in video_stream_detections.items():
+                video_index += 1
+                crossings_summary["path"] = video_stream_url
+                segments.append(crossings_summary)
+                if (crossings_summary["last_frame"] < crossings_summary["total_frames"]) or (video_index >= max_clips):
+                    output_path = segments[0]["path"].replace("CAPTURE", "ENHANCE")
+                    PhotosFileAdapter().concatenate_video_segments(segments, output_path)
+                    segments.clear()  # Clear segments for the next video stream
+                    video_index = 0
+
+            # Update status and return result
+            await ConfigAdapter().update_config(
+                token, event["id"], f"{mode}_VIDEO_SERVICE_RUNNING", "False"
             )
-            all_crossings = []
-            for result in results:
-                # get overview of people crossing the trigger line
-                frame_count += 1
-                all_crossings.append(
-                    self.get_all_crossings(frame_count, result, trigger_line_xyxyn)
-                )
-            # analyse results and identify crossings in the video stream
-            crossings_summary = self.get_crossings_summary(all_crossings)
-            video_stream_detections[video_stream_url] = crossings_summary
-
-        # Save the relevant clips to a new video file
-        segments = []
-        output_path = ""
-        video_index = 0
-        max_clips = await ConfigAdapter().get_config_int(token, event["id"], "MAX_CLIPS_PER_ENHANCED_VIDEO")
-        for video_stream_url, crossings_summary in video_stream_detections.items():
-            video_index += 1
-            crossings_summary["path"] = video_stream_url
-            segments.append(crossings_summary)
-            if (crossings_summary["last_frame"] < crossings_summary["total_frames"]) or (video_index >= max_clips):
-                output_path = segments[0]["path"].replace("CAPTURE", "ENHANCE")
-                PhotosFileAdapter().concatenate_video_segments(segments, output_path)
-                segments.clear()  # Clear segments for the next video stream
-                video_index = 0
-
-        # Update status and return result
-        await ConfigAdapter().update_config(
-            token, event["id"], f"{mode}_VIDEO_SERVICE_RUNNING", "False"
-        )
-        await StatusAdapter().create_status(
-            token,
-            event,
-            status_type,
-            f"Video enhance completed. {clip_count} clips saved.",
-        )
+            await StatusAdapter().create_status(
+                token,
+                event,
+                status_type,
+                f"Video enhance completed. {clip_count} clips saved.",
+            )
 
         return f"Video enhance completed. {clip_count} clips saved."
 

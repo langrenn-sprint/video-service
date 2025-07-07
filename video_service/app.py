@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -72,7 +73,7 @@ async def main() -> None:
         i = STATUS_INTERVAL
         while True:
             if i > STATUS_INTERVAL:
-                informasjon = f"video-service er klar til å starte analyse, mode {MODE}."
+                informasjon = f"video-service er klar, mode {MODE}."
                 await StatusAdapter().create_status(
                     token, event, status_type, informasjon
                 )
@@ -146,7 +147,7 @@ async def do_login() -> str:
             err_string = str(e)
             logging.info(err_string)
         logging.info("video-service is waiting for db connection")
-        await asyncio.sleep(5)
+        await asyncio.sleep(1)
 
 
 async def get_event(token: str) -> dict:

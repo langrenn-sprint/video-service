@@ -46,49 +46,56 @@ async def main() -> None:
     """CLI for analysing video stream."""
     token = ""
     event = {}
-    status_type = ""
     try:
-        # login to data-source
-        token = await do_login()
-        event = await get_event(token)
+        status_type = ""
+        try:
+            # login to data-source
+            token = await do_login()
+            event = await get_event(token)
 
-        if MODE not in ["CAPTURE", "ENHANCE", "DETECT"]:
-            informasjon = f"Invalid mode {MODE} - no video processing will be done."
-            raise Exception(informasjon)
+            if MODE not in ["CAPTURE", "ENHANCE", "DETECT"]:
+                informasjon = f"Invalid mode {MODE} - no video processing will be done."
+                raise Exception(informasjon)
 
-        information = (
-            f"video-service is ready, mode {MODE}! - {event['name']}, {event['date_of_event']}"
-        )
-        status_type = await ConfigAdapter().get_config(
-            token, event["id"], "VIDEO_SERVICE_STATUS_TYPE"
-        )
-        await StatusAdapter().create_status(
-            token, event, status_type, information
-        )
-        # service ready!
+            information = (
+                f"video-service is ready, mode {MODE}! - {event['name']}, {event['date_of_event']}"
+            )
+            status_type = await ConfigAdapter().get_config(
+                token, event["id"], "VIDEO_SERVICE_STATUS_TYPE"
+            )
+            await StatusAdapter().create_status(
+                token, event, status_type, information
+            )
+            # service ready!
+            await ConfigAdapter().update_config(
+                token, event["id"], f"{MODE}_VIDEO_SERVICE_AVAILABLE", "True"
+            )
+
+            i = STATUS_INTERVAL
+            while True:
+                if i > STATUS_INTERVAL:
+                    informasjon = f"video-service er klar, mode {MODE}."
+                    await StatusAdapter().create_status(
+                        token, event, status_type, informasjon
+                    )
+                    i = 0
+                else:
+                    i += 1
+                await run_the_video_service(token, event)
+                await asyncio.sleep(1)
+
+        except Exception as e:
+            err_string = str(e)
+            logging.exception(err_string)
+            await StatusAdapter().create_status(
+                token, event, status_type, f"Critical Error - exiting program: {err_string}"
+            )
+    except asyncio.CancelledError:
         await ConfigAdapter().update_config(
-            token, event["id"], f"{MODE}_VIDEO_SERVICE_AVAILABLE", "True"
+            token, event["id"], "VIDEO_SERVICE_AVAILABLE", "False"
         )
-
-        i = STATUS_INTERVAL
-        while True:
-            if i > STATUS_INTERVAL:
-                informasjon = f"video-service er klar, mode {MODE}."
-                await StatusAdapter().create_status(
-                    token, event, status_type, informasjon
-                )
-                i = 0
-            else:
-                i += 1
-            await run_the_video_service(token, event)
-            await asyncio.sleep(1)
-
-    except Exception as e:
-        err_string = str(e)
-        logging.exception(err_string)
-        await StatusAdapter().create_status(
-            token, event, status_type, f"Critical Error - exiting program: {err_string}"
-        )
+        logging.exception("video-service was cancelled by user.")
+        raise
     await ConfigAdapter().update_config(
         token, event["id"], "VIDEO_SERVICE_AVAILABLE", "False"
     )

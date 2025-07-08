@@ -71,6 +71,11 @@ Dependencies (services & db):
 docker compose up event-service user-service photo-service mongodb
 ```
 
+## slette images og containere
+
+```Shell
+docker system prune -a --volumes
+```
 
 ### Push to docker registry manually (CLI)
 

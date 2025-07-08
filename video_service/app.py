@@ -3,15 +3,14 @@
 import asyncio
 import logging
 import os
-import time
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
 
 from dotenv import load_dotenv
 
 from video_service.adapters import (
     ConfigAdapter,
     EventsAdapter,
+    PhotosFileAdapter,
     StatusAdapter,
     UserAdapter,
 )
@@ -20,7 +19,6 @@ from video_service.services import VideoService
 # get base settings
 load_dotenv()
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
-video_file_path = f"{Path.cwd()}/video_service/files"
 event = {"id": ""}
 status_type = ""
 STATUS_INTERVAL = 60
@@ -41,13 +39,14 @@ file_handler.setFormatter(formatter)
 logging.getLogger().addHandler(file_handler)
 
 MODE = os.getenv("MODE", "DUMMY")
+PhotosFileAdapter().init_video_folder(MODE)
 
 async def main() -> None:
     """CLI for analysing video stream."""
     token = ""
     event = {}
+    status_type = ""
     try:
-        status_type = ""
         try:
             # login to data-source
             token = await do_login()
@@ -71,7 +70,7 @@ async def main() -> None:
                 token, event["id"], f"{MODE}_VIDEO_SERVICE_AVAILABLE", "True"
             )
 
-            i = STATUS_INTERVAL
+            i = 0
             while True:
                 if i > STATUS_INTERVAL:
                     informasjon = f"video-service er klar, mode {MODE}."
@@ -92,12 +91,17 @@ async def main() -> None:
             )
     except asyncio.CancelledError:
         await ConfigAdapter().update_config(
-            token, event["id"], "VIDEO_SERVICE_AVAILABLE", "False"
+            token, event["id"], f"{MODE}_VIDEO_SERVICE_AVAILABLE", "False"
         )
-        logging.exception("video-service was cancelled by user.")
+        await ConfigAdapter().update_config(
+            token, event["id"], f"{MODE}_VIDEO_SERVICE_RUNNING", "False"
+        )
+        await StatusAdapter().create_status(
+            token, event, status_type, f"video-service {MODE} was cancelled (ctrl-c pressed)."
+        )
         raise
     await ConfigAdapter().update_config(
-        token, event["id"], "VIDEO_SERVICE_AVAILABLE", "False"
+        token, event["id"], f"{MODE}_VIDEO_SERVICE_AVAILABLE", "False"
     )
     logging.info("Goodbye!")
 
@@ -110,7 +114,7 @@ async def run_the_video_service(token: str, event: dict) -> None:
         if video_config["video_start"]:
             if MODE == "CAPTURE":
                 await VideoService().capture_video(
-                    token, event, status_type, video_file_path
+                    token, event, status_type
                 )
             elif MODE == "ENHANCE":
                 await VideoService().enhance_video(
@@ -118,7 +122,7 @@ async def run_the_video_service(token: str, event: dict) -> None:
                 )
             elif MODE == "DETECT":
                 await VideoService().detect_crossings(
-                    token, event, status_type
+                    token, event
                 )
         elif video_config["video_running"]:
             # should be invalid (no muliti thread) - reset

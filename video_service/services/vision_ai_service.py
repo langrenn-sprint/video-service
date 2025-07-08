@@ -3,6 +3,7 @@
 import datetime
 import json
 import logging
+import re
 
 import cv2
 import numpy as np
@@ -88,8 +89,9 @@ class VisionAIService:
             raise Exception(informasjon)
         return trigger_line_xyxy_list
 
-    def process_boxes(self, result: Results, trigger_line: list, crossings: dict, camera_location: str) -> None:
+    def process_boxes(self, result: Results, trigger_line: list, crossings: dict, camera_location: str) -> int:
         """Process result from video analytics."""
+        i_count = 0
         boxes = result.boxes
         if boxes:
             class_values = boxes.cls
@@ -123,9 +125,11 @@ class VisionAIService:
                                     crossings,
                                     xyxy,
                                 )
+                                i_count += 1
 
                 except TypeError as e:
                     logging.debug(f"TypeError: {e}")
+        return i_count
 
     def validate_box(self, xyxyn: Tensor) -> bool:
         """Filter out boxes not relevant."""
@@ -179,12 +183,12 @@ class VisionAIService:
     ) -> None:
         """Save image and crop_images to file."""
         logging.info(f"Line crossing! ID:{d_id}")
-        current_time = datetime.datetime.now(datetime.UTC)
-        time_text = current_time.strftime("%Y%m%d %H:%M:%S")
+        taken_time = extract_datetime_from_filename(result.path)
+        time_text = taken_time.strftime("%Y%m%d %H:%M:%S")
 
         # save image to file - full size
-        timestamp = current_time.strftime("%Y%m%d_%H%M%S")
-        photos_file_path = PhotosFileAdapter().get_photos_folder_path()
+        timestamp = taken_time.strftime("%Y%m%d_%H%M%S")
+        photos_file_path = PhotosFileAdapter().get_video_folder_path("DETECT")
         file_name = f"{photos_file_path}/{camera_location}_{timestamp}_{d_id}.jpg"
         cv2.imwrite(f"{file_name}", result.orig_img)
 
@@ -211,3 +215,14 @@ class VisionAIService:
             crop_im_list,
             file_name,
         )
+
+def extract_datetime_from_filename(filename: str) -> datetime.datetime:
+    """Extract a datetime object from a file path with pattern YYYYMMDD and HHMMSS."""
+    match = re.search(r"(\d{8}_\d{6})", filename)
+    if match:
+        date_str = match.group(1)
+        try:
+            return datetime.datetime.strptime(date_str, "%Y%m%d_%H%M%S").astimezone()
+        except ValueError:
+            logging.exception(f"Invalid date format in filename: {filename}")
+    return datetime.datetime.now(datetime.UTC)

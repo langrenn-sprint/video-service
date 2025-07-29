@@ -81,7 +81,7 @@ async def main() -> None:
                 else:
                     i += 1
                 await run_the_video_service(token, event)
-                await asyncio.sleep(1)
+                await asyncio.sleep(5)
 
         except Exception as e:
             err_string = str(e)
@@ -158,7 +158,7 @@ async def do_login() -> str:
             err_string = str(e)
             logging.info(err_string)
         logging.info("video-service is waiting for db connection")
-        await asyncio.sleep(1)
+        await asyncio.sleep(5)
 
 
 async def get_event(token: str) -> dict:

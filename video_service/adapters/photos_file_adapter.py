@@ -34,6 +34,9 @@ class PhotosFileAdapter:
 
     def get_video_folder_path(self, mode: str) -> str:
         """Get path to video folder."""
+        my_folder = Path(f"{VISION_ROOT_PATH}/{mode}")
+        if not my_folder.exists():
+            my_folder.mkdir(parents=True, exist_ok=True)
         return f"{VISION_ROOT_PATH}/{mode}"
 
     def get_photos_archive_folder_path(self) -> str:

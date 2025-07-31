@@ -24,8 +24,9 @@ Then install the dependencies:
 ### If required - virtual environment
 
 Install: curl <https://pyenv.run> | bash
-Create: python -m venv .venv (replace .venv with your preferred name)
+Create: python3.13 -m venv .venv (replace .venv with your preferred name)
 Install python 3.13: pyenv install 3.13
+
 Activate:
 source .venv/bin/activate
 

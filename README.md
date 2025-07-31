@@ -67,7 +67,7 @@ To run tests with logging, do:
 ### Start service
 ```Zsh
 source .venv/bin/activate
-.venv/bin/python3 -m video_service.app
+python -m video_service.app
 Dependencies (services & db):
 docker compose up event-service user-service photo-service mongodb
 ```

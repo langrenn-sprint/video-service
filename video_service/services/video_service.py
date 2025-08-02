@@ -55,13 +55,6 @@ class VideoService:
         video_clip_fps = await ConfigAdapter().get_config_int(token, event["id"], "VIDEO_CLIP_FPS")
         video_file_path = PhotosFileAdapter().get_video_folder_path(mode)
 
-        await StatusAdapter().create_status(
-            token,
-            event,
-            status_type,
-            f"Starter video capture av <a href={video_stream_url}>video</a>.",
-        )
-
         clip_duration = await ConfigAdapter().get_config_int(
             token, event["id"], "VIDEO_CLIP_DURATION"
         )

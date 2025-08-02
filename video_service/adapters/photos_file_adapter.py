@@ -116,7 +116,8 @@ class PhotosFileAdapter:
         """
         writer = None
         first_segment = str(video_segments[0]["path"])
-        output_path = f"FILTERED_{first_segment}"
+        output_path = first_segment.replace("CAPTURE", "FILTER")
+        output_path = output_path.replace("FILTERD", "FILTERED")
 
         for segment in video_segments:
             cap = cv2.VideoCapture(segment["path"])

@@ -52,7 +52,7 @@ async def main() -> None:
             token = await do_login()
             event = await get_event(token)
 
-            if MODE not in ["CAPTURE", "ENHANCE", "DETECT"]:
+            if MODE not in ["CAPTURE", "FILTER", "DETECT"]:
                 informasjon = f"Invalid mode {MODE} - no video processing will be done."
                 raise Exception(informasjon)
 
@@ -116,8 +116,8 @@ async def run_the_video_service(token: str, event: dict) -> None:
                 await VideoService().capture_video(
                     token, event, status_type
                 )
-            elif MODE == "ENHANCE":
-                await VideoService().enhance_video(
+            elif MODE == "FILTER":
+                await VideoService().filter_video(
                     token, event, status_type
                 )
             elif MODE == "DETECT":

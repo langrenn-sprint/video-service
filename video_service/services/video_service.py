@@ -104,7 +104,7 @@ class VideoService:
 
                 # Save the clip to a file
                 timestamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
-                clip_filename = f"{video_file_path}/{mode}_{timestamp}_{clip_count}.avi"
+                clip_filename = f"{video_file_path}/CAPTURED_{timestamp}_{clip_count}.avi"
                 clip_count += 1
 
                 # Define the codec and create a VideoWriter object
@@ -137,18 +137,18 @@ class VideoService:
         return f"Video capture: {clip_count} clips saved."
 
 
-    async def enhance_video(
+    async def filter_video(
         self,
         token: str,
         event: dict,
         status_type: str,
     ) -> str:
-        """Enhance video from a video clips.
+        """Filter video clips, remove unwanted frames.
 
         The video is saved in the specified directory with a timestamp in the filename.
 
         Args:
-            token: To update databes
+            token: To update database
             event: Event details
             status_type: To update status messages
 
@@ -159,16 +159,16 @@ class VideoService:
             VideoStreamNotFoundError: If the video stream cannot be found.
 
         """
-        mode = "ENHANCE"
+        mode = "FILTER"
         informasjon = ""
 
         clip_count = 0
         frame_count = 0
 
         # Open the video stream for captured video clips
-        video_urls = PhotosFileAdapter().get_all_files("CAPTURE")
+        video_urls = PhotosFileAdapter().get_all_files("CAPTURED")
         if video_urls:
-            max_clips = await ConfigAdapter().get_config_int(token, event["id"], "MAX_CLIPS_PER_ENHANCED_VIDEO")
+            max_clips = await ConfigAdapter().get_config_int(token, event["id"], "MAX_CLIPS_PER_FILTERED_VIDEO")
             await ConfigAdapter().update_config(
                 token, event["id"], f"{mode}_VIDEO_SERVICE_RUNNING", "True"
             )
@@ -232,10 +232,10 @@ class VideoService:
                     token,
                     event,
                     status_type,
-                    f"Video enhance: {clip_count} clips saved.",
+                    f"Video filter: {clip_count} clips saved.",
                 )
 
-        return f"Video enhance: {clip_count} clips saved."
+        return f"Video filter: {clip_count} clips saved."
 
 
     async def detect_crossings(
@@ -243,7 +243,7 @@ class VideoService:
         token: str,
         event: dict,
     ) -> str:
-        """Detect crossing video from enhanced video clips.
+        """Detect crossing video from filterd video clips.
 
         Screenshots with crossings are taken. The video archived.
 
@@ -260,15 +260,15 @@ class VideoService:
         """
         mode = "DETECT"
 
-        # Open the video stream for enhanced video clips
-        video_urls = PhotosFileAdapter().get_all_files("ENHANCE")
+        # Open the video stream for filterd video clips
+        video_urls = PhotosFileAdapter().get_all_files("FILTER")
         if video_urls:
             await ConfigAdapter().update_config(
                 token, event["id"], f"{mode}_VIDEO_SERVICE_RUNNING", "True"
             )
         for video_stream_url in video_urls:
             await self.detect_crossings_with_ultraltyics(token, event, video_stream_url)
-            PhotosFileAdapter().move_to_archive("ENHANCE", Path(video_stream_url).name)
+            PhotosFileAdapter().move_to_archive("FILTER", Path(video_stream_url).name)
 
 
         # Update status and return result
@@ -515,9 +515,8 @@ class VideoService:
             token, event["id"], "VIDEO_ANALYTICS_RUNNING", "false"
         )
         informasjon = f"Analytics: {i_count} detections. {informasjon}"
-        if i_count > 0:
-            await StatusAdapter().create_status(
-                token, event, "VIDEO_ANALYTICS", informasjon
-            )
+        await StatusAdapter().create_status(
+            token, event, "VIDEO_ANALYTICS", informasjon
+        )
         return informasjon
 

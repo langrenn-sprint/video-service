@@ -2,10 +2,10 @@
 A service to capture relevant video clips from an online camera. The service can run as workers in 3 modes
 ### CAPTURE
 Capture of a stream, save as video clips in configurable resolution and duration.
-### ENHANCE
+### FILTER
 Post processing of output from mode CAPTURE. Only video clips with moving persons will be kept. Video clips will also be adapted so that clipping is done at appropriate time.
 ### DETECT
-Line crossing detection. The service can run as stand alone worker or take input from worker CAPTURE or ENHANCE.
+Line crossing detection. The service can run as stand alone worker or take input from worker FILTER.
 Configuration from database (default values in global_settings.json) will always be shared between the workers wile each workers mode will be defined through environment (env) configuration.
 
 ## Requirement for development

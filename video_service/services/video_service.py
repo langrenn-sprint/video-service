@@ -166,7 +166,7 @@ class VideoService:
         frame_count = 0
 
         # Open the video stream for captured video clips
-        video_urls = PhotosFileAdapter().get_all_files("CAPTURED")
+        video_urls = PhotosFileAdapter().get_all_files("CAPTURE")
         if video_urls:
             max_clips = await ConfigAdapter().get_config_int(token, event["id"], "MAX_CLIPS_PER_FILTERED_VIDEO")
             await ConfigAdapter().update_config(

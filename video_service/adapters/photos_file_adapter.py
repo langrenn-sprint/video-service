@@ -160,7 +160,7 @@ class PhotosFileAdapter:
         try:
             source_file.rename(destination_file)
         except FileNotFoundError:
-            logging.info("Destination folder not found. Creating...")
+            logging.info("Destination folder not found. Creating.")
             Path(archive_folder).mkdir(parents=True, exist_ok=True)
             source_file.rename(destination_file)
         except Exception:

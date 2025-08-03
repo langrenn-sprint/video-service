@@ -58,7 +58,7 @@ To run linters, checkers and tests:
 % uv run poe release
 ```
 
-To run tests with logging, do:
+To run tests with logging, do (/home/heming/Nedlastinger/20250525_GKOpp1.mp4):
 
 ```Zsh
 % uv run pytest -m integration -- --log-cli-level=DEBUG

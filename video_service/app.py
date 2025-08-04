@@ -14,7 +14,7 @@ from video_service.adapters import (
     StatusAdapter,
     UserAdapter,
 )
-from video_service.services import VideoService
+from video_service.services import VideoService, VisionAIService
 
 # get base settings
 load_dotenv()
@@ -80,7 +80,7 @@ async def main() -> None:
                     i = 0
                 else:
                     i += 1
-                await run_the_video_service(token, event)
+                await run_the_video_service(token, event, status_type)
                 await asyncio.sleep(5)
 
         except Exception as e:
@@ -106,13 +106,14 @@ async def main() -> None:
     logging.info("Goodbye!")
 
 
-async def run_the_video_service(token: str, event: dict) -> None:
+async def run_the_video_service(token: str, event: dict, status_type: str) -> None:
     """Run the service."""
     video_config = {}
     video_config = await get_config(token, event["id"], MODE)
     try:
         if video_config["video_start"]:
             if MODE == "CAPTURE":
+                await VisionAIService().print_photo_with_trigger_line(token, event, status_type)
                 await VideoService().capture_video(
                     token, event, status_type
                 )
@@ -129,6 +130,10 @@ async def run_the_video_service(token: str, event: dict) -> None:
             await ConfigAdapter().update_config(
                 token, event["id"], f"{MODE}_VIDEO_SERVICE_RUNNING", "False"
             )
+        elif video_config["new_trigger_line_photo"] and MODE == "CAPTURE":
+            # new trigger line photo - reset
+            await VisionAIService().print_photo_with_trigger_line(token, event, status_type)
+
     except Exception as e:
         err_string = str(e)
         logging.exception(err_string)
@@ -203,9 +208,13 @@ async def get_config(token: str, event_id: str, mode: str) -> dict:
     video_start = await ConfigAdapter().get_config_bool(
         token, event_id, f"{mode}_VIDEO_SERVICE_START"
     )
+    new_trigger_line_photo = await ConfigAdapter().get_config_bool(
+        token, event_id, "NEW_TRIGGER_LINE_PHOTO"
+    )
     return {
         "video_running": video_running,
         "video_start": video_start,
+        "new_trigger_line_photo": new_trigger_line_photo,
     }
 
 

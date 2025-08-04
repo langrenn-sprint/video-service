@@ -287,7 +287,7 @@ class VisionAIService:
             trigger_line_config_file = await ConfigAdapter().get_config(
                 token, event["id"], "TRIGGER_LINE_CONFIG_FILE"
             )
-            photos_file_path = PhotosFileAdapter().get_photos_folder_path()
+            photos_file_path = PhotosFileAdapter().get_video_folder_path("")
             file_name = f"{photos_file_path}/{time_text}_{trigger_line_config_file}"
             cv2.imwrite(file_name, cv2.cvtColor(im_rgb, cv2.COLOR_RGB2BGR))  # Convert back to BGR for saving
             informasjon = f"Trigger line <a title={file_name}>photo</a> created."

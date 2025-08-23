@@ -130,7 +130,6 @@ dmypy.json
 .pytype
 
 # Test files
-*.pt
 *.mp4
 .DS_Store
 Finish_202*

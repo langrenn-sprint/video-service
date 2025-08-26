@@ -130,7 +130,7 @@ class PhotosFileAdapter:
                 width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                 fps = cap.get(cv2.CAP_PROP_FPS)
-                fourcc = cv2.VideoWriter.fourcc(*"XVID")
+                fourcc = cv2.VideoWriter.fourcc(*"mp4v")
 
                 # Initialize writer if not already done
                 if writer is None:

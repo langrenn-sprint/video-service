@@ -97,11 +97,11 @@ class VideoService:
 
                 # Save the clip to a file
                 timestamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
-                clip_filename = f"{video_file_path}/CAPTURED_{timestamp}_{clip_count}.avi"
+                clip_filename = f"{video_file_path}/CAPTURED_{timestamp}_{clip_count}.mp4"
                 clip_count += 1
 
                 # Define the codec and create a VideoWriter object
-                fourcc = cv2.VideoWriter.fourcc(*"XVID")
+                fourcc = cv2.VideoWriter.fourcc(*"mp4v")
                 out = cv2.VideoWriter(clip_filename, fourcc, video_clip_fps, image_size)
 
                 for frame in clip_frames:
@@ -166,7 +166,7 @@ class VideoService:
                 token, event["id"], f"{mode}_VIDEO_SERVICE_RUNNING", "True"
             )
             model = YOLO("yolov8n.pt")  # Load an official Detect model
-            image_size = (640, 480) # Set low image size for faster processing
+            image_size = (736, 1280) # Set low image size for faster processing
             video_stream_detections = {}
             for video_stream_url in video_urls:
 
@@ -482,7 +482,7 @@ class VideoService:
             )
         )
         await ConfigAdapter().update_config(
-            token, event["id"], "VIDEO_ANALYTICS_RUNNING", "True"
+            token, event["id"], "DETECT_VIDEO_SERVICE_RUNNING", "True"
         )
 
         # Perform tracking with the model
@@ -505,7 +505,7 @@ class VideoService:
             i_count += VisionAIService().process_boxes(result, trigger_line, crossings, camera_location)
 
         await ConfigAdapter().update_config(
-            token, event["id"], "VIDEO_ANALYTICS_RUNNING", "false"
+            token, event["id"], "DETECT_VIDEO_SERVICE_RUNNING", "false"
         )
         informasjon = f"Analytics: {i_count} detections. {informasjon}"
         await StatusAdapter().create_status(

@@ -1,8 +1,8 @@
 """Module for events adapter."""
 
+import datetime
 import logging
 import os
-from datetime import datetime
 from http import HTTPStatus
 from zoneinfo import ZoneInfo
 
@@ -45,23 +45,25 @@ class EventsAdapter:
                     logging.error(informasjon)
         return events
 
-    def get_local_datetime_now(self, event: dict) -> datetime:
+    def get_local_datetime_now(self, event: dict) -> datetime.datetime:
         """Return local datetime object, time zone adjusted from event info."""
-        timezone = event["timezone"]
-        return datetime.now(ZoneInfo(timezone)) if timezone else datetime.now(timezone.utc)
+        time_zone = event["timezone"]
+        if time_zone:
+            local_time_obj = datetime.datetime.now(ZoneInfo(time_zone))
+        else:
+            local_time_obj = datetime.datetime.now(datetime.UTC)
+        return local_time_obj
 
     def get_local_time(self, event: dict, time_format: str) -> str:
         """Return local time string, time zone adjusted from event info."""
         local_time = ""
-        timezone = event["timezone"]
-        t_n = datetime.now(ZoneInfo(timezone)) if timezone else datetime.now(timezone.utc)
+        time_zone = event["timezone"]
+        time_now = datetime.datetime.now(ZoneInfo(time_zone)) if time_zone else datetime.datetime.now(datetime.UTC)
+
         if time_format == "HH:MM":
-            local_time = f"{t_n.strftime('%H')}:{t_n.strftime('%M')}"
+            local_time = f"{time_now.strftime('%H')}:{time_now.strftime('%M')}"
         elif time_format == "log":
-            local_day = (
-                f"{t_n.strftime('%Y')}-{t_n.strftime('%m')}-{t_n.strftime('%d')}"
-            )
-            local_time = f"{local_day}T{t_n.strftime('%X')}"
+            local_time = f"{time_now.strftime('%Y')}-{time_now.strftime('%m')}-{time_now.strftime('%d')}T{time_now.strftime('%X')}"
         else:
-            local_time = t_n.strftime("%X")
+            local_time = time_now.strftime("%X")
         return local_time

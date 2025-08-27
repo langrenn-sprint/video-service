@@ -7,19 +7,15 @@ RUN apt-get update && apt-get install -y \
     libsm6 \
     libxext6 \
     libxrender1 \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 # Install uv.
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Copy the application into the container.
-ADD . /app
-
 # Install the application dependencies.
 WORKDIR /app
+COPY . /app
 RUN uv sync --frozen
-
-# Expose the application port.
-EXPOSE 8080
 
 # Docker label
 LABEL org.opencontainers.image.source=https://github.com/langrenn-sprint/video-service
@@ -27,4 +23,4 @@ LABEL org.opencontainers.image.description="video-service"
 LABEL org.opencontainers.image.licenses=Apache-2.0
 
 # Run the application.
-CMD ["/app/.venv/bin/python", "-m", "video_service.app"] 
+CMD ["python", "-m", "video_service.app"] 

@@ -23,7 +23,7 @@ Then install the dependencies:
 ```
 ### If required - virtual environment
 
-Install: curl <https://pyenv.run> | bash
+Install: curl https://pyenv.run | bash
 Create: python3.13 -m venv .venv (replace .venv with your preferred name)
 Install python 3.13: pyenv install 3.13
 
@@ -67,7 +67,7 @@ To run tests with logging, do (/home/heming/Nedlastinger/20250525_GKOpp1.mp4):
 ### Start service
 ```Zsh
 source .venv/bin/activate
-.venv/bin/python -m video_service.app
+python3.13 -m video_service.app
 Dependencies (services & db):
 docker compose up event-service user-service photo-service mongodb
 ```

@@ -7,11 +7,9 @@ from http import HTTPStatus
 from zoneinfo import ZoneInfo
 
 from aiohttp import ClientSession, hdrs
-from dotenv import load_dotenv
 from multidict import MultiDict
 
 # get base settings
-load_dotenv()
 EVENTS_HOST_SERVER = os.getenv("EVENTS_HOST_SERVER", "localhost")
 EVENTS_HOST_PORT = os.getenv("EVENTS_HOST_PORT", "8082")
 EVENT_SERVICE_URL = f"http://{EVENTS_HOST_SERVER}:{EVENTS_HOST_PORT}"

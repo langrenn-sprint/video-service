@@ -67,6 +67,9 @@ To run tests with logging, do (/home/heming/Nedlastinger/20250525_GKOpp1.mp4):
 ### Start service
 ```Zsh
 source .venv/bin/activate
+set -a
+source .env
+set +a
 python3.13 -m video_service.app
 Dependencies (services & db):
 docker compose up event-service user-service photo-service mongodb

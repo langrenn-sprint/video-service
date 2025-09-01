@@ -5,11 +5,9 @@ import os
 from http import HTTPStatus
 
 from aiohttp import ClientSession, hdrs
-from dotenv import load_dotenv
 from multidict import MultiDict
 
 # get base settings
-load_dotenv()
 USERS_HOST_SERVER = os.getenv("USERS_HOST_SERVER")
 USERS_HOST_PORT = os.getenv("USERS_HOST_PORT")
 USER_SERVICE_URL = f"http://{USERS_HOST_SERVER}:{USERS_HOST_PORT}"

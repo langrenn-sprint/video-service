@@ -5,7 +5,6 @@ from typing import Any
 
 import pytest
 from aiohttp.test_utils import TestClient as _TestClient
-from dotenv import load_dotenv
 
 
 @pytest.fixture(scope="session")

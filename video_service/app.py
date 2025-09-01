@@ -5,8 +5,6 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 
-from dotenv import load_dotenv
-
 from video_service.adapters import (
     ConfigAdapter,
     EventsAdapter,
@@ -17,7 +15,6 @@ from video_service.adapters import (
 from video_service.services import VideoService, VisionAIService
 
 # get base settings
-load_dotenv()
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 event = {"id": ""}
 status_type = ""

@@ -6,13 +6,11 @@ import os
 from http import HTTPStatus
 
 from aiohttp import ClientSession, hdrs, web
-from dotenv import load_dotenv
 from multidict import MultiDict
 
 from video_service.adapters.events_adapter import EventsAdapter
 
 # get base settings
-load_dotenv()
 PHOTOS_HOST_SERVER = os.getenv("PHOTOS_HOST_SERVER", "localhost")
 PHOTOS_HOST_PORT = os.getenv("PHOTOS_HOST_PORT", "8092")
 PHOTO_SERVICE_URL = f"http://{PHOTOS_HOST_SERVER}:{PHOTOS_HOST_PORT}"

@@ -27,13 +27,7 @@ Then install the dependencies:
 ```Zsh
 % uv sync
 ```
-### If required - virtual environment
-
-Install: curl https://pyenv.run | bash
-Create: python3.13 -m venv .venv (replace .venv with your preferred name)
-Install python 3.13: pyenv install 3.13
-
-Activate:
+Activate virtual env:
 source .venv/bin/activate
 
 ### Install

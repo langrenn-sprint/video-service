@@ -4,7 +4,7 @@ license = "Apache-2.0"
 name = "video-service"
 readme = "README.md"
 version = "1.1.0"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "aiodns>=3.2.0",
     "aiofiles>=24.1.0",
@@ -19,8 +19,7 @@ dependencies = [
     "ultralytics>=8.3.145",
 ]
 
-[tool.uv]
-dev-dependencies = [
+dependency-groups.dev = [
     "poethepoet>=0.29.0",
     "pyright>=1.1.386",
     "pytest-asyncio>=0.24.0",

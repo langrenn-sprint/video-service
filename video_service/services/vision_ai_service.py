@@ -120,7 +120,7 @@ class VisionAIService:
                                     )
                             elif d_id not in crossings[crossed_line]:
                                 crossings[crossed_line].append(d_id)
-                                VisionAIService().save_image(
+                                VisionAIService().save_detect_image(
                                     result,
                                     camera_location,
                                     d_id,
@@ -175,7 +175,7 @@ class VisionAIService:
         return "false"
 
 
-    def save_image(
+    def save_detect_image(
         self,
         result: Results,
         camera_location: str,
@@ -190,7 +190,7 @@ class VisionAIService:
 
         # save image to file - full size
         timestamp = taken_time.strftime("%Y%m%d_%H%M%S")
-        photos_file_path = PhotosFileAdapter().get_video_folder_path("DETECT")
+        photos_file_path = PhotosFileAdapter().get_detect_folder_path()
         file_name = f"{photos_file_path}/{camera_location}_{timestamp}_{d_id}.jpg"
         cv2.imwrite(f"{file_name}", result.orig_img)
 
@@ -238,7 +238,7 @@ class VisionAIService:
             raise VideoStreamNotFoundError(informasjon) from None
         try:
             # Show the results
-            ret_save, im = cap.read()
+            _, im = cap.read()
             # Convert the frame to RBG
             im_rgb = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
 
@@ -287,7 +287,7 @@ class VisionAIService:
             trigger_line_config_file = await ConfigAdapter().get_config(
                 token, event["id"], "TRIGGER_LINE_CONFIG_FILE"
             )
-            photos_file_path = PhotosFileAdapter().get_video_folder_path("")
+            photos_file_path = PhotosFileAdapter().get_photos_folder_path()
             file_name = f"{photos_file_path}/{time_text}_{trigger_line_config_file}"
             cv2.imwrite(file_name, cv2.cvtColor(im_rgb, cv2.COLOR_RGB2BGR))  # Convert back to BGR for saving
             informasjon = f"Trigger line <a title={file_name}>photo</a> created."

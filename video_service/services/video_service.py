@@ -53,7 +53,7 @@ class VideoService:
         informasjon = ""
         video_stream_url = await ConfigAdapter().get_config(token, event["id"], "VIDEO_URL")
         video_clip_fps = await ConfigAdapter().get_config_int(token, event["id"], "VIDEO_CLIP_FPS")
-        video_file_path = PhotosFileAdapter().get_video_folder_path(mode)
+        video_file_path = PhotosFileAdapter().get_capture_folder_path()
 
         clip_duration = await ConfigAdapter().get_config_int(
             token, event["id"], "VIDEO_CLIP_DURATION"
@@ -159,7 +159,7 @@ class VideoService:
         frame_count = 0
 
         # Open the video stream for captured video clips
-        video_urls = PhotosFileAdapter().get_all_files("CAPTURE")
+        video_urls = PhotosFileAdapter().get_all_capture_files()
         if video_urls:
             max_clips = await ConfigAdapter().get_config_int(token, event["id"], "MAX_CLIPS_PER_FILTERED_VIDEO")
             await ConfigAdapter().update_config(
@@ -254,14 +254,14 @@ class VideoService:
         mode = "DETECT"
 
         # Open the video stream for filterd video clips
-        video_urls = PhotosFileAdapter().get_all_files("FILTER")
+        video_urls = PhotosFileAdapter().get_all_filter_files()
         if video_urls:
             await ConfigAdapter().update_config(
                 token, event["id"], f"{mode}_VIDEO_SERVICE_RUNNING", "True"
             )
         for video_stream_url in video_urls:
             await self.detect_crossings_with_ultraltyics(token, event, video_stream_url)
-            PhotosFileAdapter().move_to_archive("FILTER", Path(video_stream_url).name)
+            PhotosFileAdapter().move_to_filter_archive(Path(video_stream_url).name)
 
 
         # Update status and return result

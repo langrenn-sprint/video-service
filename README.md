@@ -8,6 +8,12 @@ Post processing of output from mode CAPTURE. Only video clips with moving person
 Line crossing detection. The service can run as stand alone worker or take input from worker FILTER.
 Configuration from database (default values in global_settings.json) will always be shared between the workers wile each workers mode will be defined through environment (env) configuration.
 
+# storage settings
+Sets usage of local file storage or cloud services such as Buckets
+valid storage modes (VIDEO_STORAGE_MODE):
+local_storage - pushing video to cloud bucket
+cloud_storage - pushing image detectsions to cloud bucket and message to pubsub
+
 ## Requirement for development
 
 Install [uv](https://docs.astral.sh/uv/), e.g.:
@@ -70,7 +76,7 @@ source .venv/bin/activate
 set -a
 source .env
 set +a
-python3.13 -m video_service.app
+python -m video_service.app
 Dependencies (services & db):
 docker compose up event-service user-service photo-service mongodb
 ```
@@ -99,3 +105,12 @@ sudo sysctl -p
 
 ```Zsh
 ```
+        # test get blobs
+        blobs = GoogleCloudStorageAdapter().list_blobs("CAPTURE/CAPTURED_")
+        logging.info(f"Found blobs: {blobs}")
+        # test move first blob
+        if blobs:
+            first_blob = blobs[0]
+            new_blob_name = first_blob.replace("CAPTURE/CAPTURED_", "CAPTURE/ARCHIVE/CAPTURED_")
+            new_blob_url = GoogleCloudStorageAdapter().move_blob(first_blob, new_blob_name)
+            logging.info(f"Moved blob to: {new_blob_url}")

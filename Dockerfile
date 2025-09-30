@@ -23,4 +23,4 @@ LABEL org.opencontainers.image.description="video-service"
 LABEL org.opencontainers.image.licenses=Apache-2.0
 
 # Run the application.
-CMD ["python", "-m", "video_service.app"] 
+CMD ["/app/.venv/bin/python", "-m", "video_service.app"] 

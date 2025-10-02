@@ -5,6 +5,10 @@ from pathlib import Path
 
 import cv2
 
+from video_service.adapters.google_cloud_storage_adapter import (
+    GoogleCloudStorageAdapter,
+)
+
 from .config_adapter import ConfigAdapter
 
 VISION_ROOT_PATH = f"{Path.cwd()}/video_service/files"
@@ -30,13 +34,17 @@ class PhotosFileAdapter:
         if not my_folder.exists():
             my_folder.mkdir(parents=True, exist_ok=True)
 
+    def get_capture_folder_path(self) -> str:
+        """Get path to detected images folder."""
+        return CAPTURED_FILE_PATH
+
     def get_detect_folder_path(self) -> str:
         """Get path to detected images folder."""
         return DETECTED_FILE_PATH
 
-    def get_capture_folder_path(self) -> str:
+    def get_filter_folder_path(self) -> str:
         """Get path to detected images folder."""
-        return CAPTURED_FILE_PATH
+        return FILTERED_FILE_PATH
 
     def get_photos_archive_folder_path(self) -> str:
         """Get path to photo archive folder."""
@@ -59,12 +67,18 @@ class PhotosFileAdapter:
     def get_all_capture_files(self) -> list:
         """Get all url to all captured files on file directory."""
         try:
-            files = Path(CAPTURED_FILE_PATH).iterdir()
-            return [f"{CAPTURED_FILE_PATH}/{f.name}" for f in files if f.is_file()]
+            files = list(Path(CAPTURED_FILE_PATH).iterdir())
+            file_list = [
+                {"name": f.name, "url": f"{CAPTURED_FILE_PATH}/{f.name}"}
+                for f in files
+                if f.is_file()
+            ]
         except Exception:
             informasjon = "Error getting captured files"
             logging.exception(informasjon)
-        return []
+            return []
+        else:
+            return file_list
 
     def get_all_filter_files(self) -> list:
         """Get all url to all filtered files on file directory."""
@@ -164,57 +178,8 @@ class PhotosFileAdapter:
         except Exception:
             logging.exception("Error moving photo to archive.")
 
-    def concatenate_video_segments(self, video_segments: list) -> str:
-        """Concatenate segments from multiple videos into one video.
-
-        Args:
-            video_segments (list): List of dicts, each with keys:
-                - 'path': path to video file
-                - 'last_frame': last frame index with people detected (inclusive)
-
-        Returns:
-            str: Path to the concatenated video.
-
-        """
-        writer = None
-        first_segment = str(video_segments[0]["path"])
-        output_path = first_segment.replace("CAPTURE", "FILTER")
-        output_path = output_path.replace("FILTERD", "FILTERED")
-
-        for segment in video_segments:
-            cap = cv2.VideoCapture(segment["path"])
-            try:
-                if not cap.isOpened():
-                    information = f"Error opening video file: {segment['path']}"
-                    raise ValueError(information)
-
-                # Get video properties
-                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                fps = cap.get(cv2.CAP_PROP_FPS)
-                fourcc = cv2.VideoWriter.fourcc(*"mp4v")
-
-                # Initialize writer if not already done
-                if writer is None:
-                    writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-
-                for _frame_idx in range(segment["last_frame"] + 1):
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
-                    writer.write(frame)
-            finally:
-                cap.release()
-            if writer is not None:
-                writer.release()
-
-        # archive the input videos
-        for segment in video_segments:
-            self.move_to_capture_archive(Path(segment["path"]).name)
-        return output_path
-
     def move_to_capture_archive(self, filename: str) -> None:
-        """Move photo to archive."""
+        """Move photo to local archive."""
         source_file = Path(CAPTURED_FILE_PATH) / filename
         destination_file = Path(CAPTURED_ARCHIVE_PATH) / filename
 

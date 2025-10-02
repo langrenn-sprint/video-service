@@ -17,6 +17,9 @@ from video_service.adapters import (
     StatusAdapter,
     VideoStreamNotFoundError,
 )
+from video_service.adapters.google_cloud_storage_adapter import (
+    GoogleCloudStorageAdapter,
+)
 from video_service.services.vision_ai_service import (
     VisionAIService,
 )
@@ -135,6 +138,7 @@ class VideoService:
         token: str,
         event: dict,
         status_type: str,
+        storage_mode: str,
     ) -> str:
         """Filter video clips, remove unwanted frames.
 
@@ -144,6 +148,7 @@ class VideoService:
             token: To update database
             event: Event details
             status_type: To update status messages
+            storage_mode: To determine if video clips are stored locally or in the cloud
 
         Returns:
             A string indicating the status of the video analytics.
@@ -153,69 +158,54 @@ class VideoService:
 
         """
         mode = "FILTER"
-        informasjon = ""
 
         clip_count = 0
         frame_count = 0
 
-        # Open the video stream for captured video clips
-        video_urls = PhotosFileAdapter().get_all_capture_files()
-        if video_urls:
-            max_clips = await ConfigAdapter().get_config_int(token, event["id"], "MAX_CLIPS_PER_FILTERED_VIDEO")
+        # Discover video URLs/files
+        captured_videos = await self._list_captured_videos(storage_mode)
+        if captured_videos:
+            max_clips = await ConfigAdapter().get_config_int(
+                token, event["id"], "MAX_CLIPS_PER_FILTERED_VIDEO"
+            )
             await ConfigAdapter().update_config(
                 token, event["id"], f"{mode}_VIDEO_SERVICE_RUNNING", "True"
             )
-            model = YOLO("yolov8n.pt")  # Load an official Detect model
-            image_size = (736, 1280) # Set low image size for faster processing
-            video_stream_detections = {}
-            for video_stream_url in video_urls:
 
-                # Perform tracking with the model
+            model = YOLO(await ConfigAdapter().get_config(
+                token, event["id"], "YOLO_MODEL_NAME"
+            ))
+            image_size = await ConfigAdapter().get_config_img_res_tuple(
+                token, event["id"], "DETECT_ANALYTICS_IMAGE_SIZE"
+            )
+            video_stream_detections = []
+
+            for video in captured_videos:
+                # respect the max clip limit
                 if clip_count > max_clips:
                     break
                 clip_count += 1
-                try:
-                    results = model.track(
-                        source=video_stream_url,
-                        conf=MIN_CONFIDENCE,
-                        classes=DETECTION_CLASSES,
-                        stream=True,
-                        imgsz=image_size,
-                        persist=True
-                    )
-                except Exception as e:
-                    informasjon = f"Error opening video stream from: {video_stream_url}"
-                    logging.exception(informasjon)
-                    raise VideoStreamNotFoundError(informasjon) from e
 
-                trigger_line_xyxyn = await VisionAIService().get_trigger_line_xyxy_list(
-                    token, event
+                crossings_summary = await self._process_single_video(
+                    model, video, token, event, frame_count, image_size
                 )
-                all_crossings = []
-                for result in results:
-                    # get overview of people crossing the trigger line
-                    frame_count += 1
-                    all_crossings.append(
-                        self.get_all_crossings(frame_count, result, trigger_line_xyxyn)
-                    )
-                # analyse results and identify crossings in the video stream
-                crossings_summary = self.get_crossings_summary(all_crossings)
-                video_stream_detections[video_stream_url] = crossings_summary
+                video_stream_detections.append(crossings_summary)
 
             # Save the relevant clips to a new video file
             segments = []
             video_index = 0
-            for video_stream_url, crossings_summary in video_stream_detections.items():
+            for detection in video_stream_detections:
                 video_index += 1
-                crossings_summary["path"] = video_stream_url
-                segments.append(crossings_summary)
-                if (crossings_summary["last_frame"] < crossings_summary["total_frames"]):
-                    PhotosFileAdapter().concatenate_video_segments(segments)
-                    segments.clear()  # Clear segments for the next video stream
+                segments.append(detection)
+                if detection["crossings"]["last_frame"] < detection["crossings"]["total_frames"]:
+                    self._concatenate_video_segments(segments, storage_mode)
+                    segments.clear()
                     video_index = 0
+
             if segments:
                 # in case some segments are left after the loop
                 clip_count = clip_count - len(segments)
+
             # Update status and return result
             await ConfigAdapter().update_config(
                 token, event["id"], f"{mode}_VIDEO_SERVICE_RUNNING", "False"
@@ -293,6 +283,108 @@ class VideoService:
         crossings_summary["last_frame"] = i_last_detection
         crossings_summary["total_frames"] = i_count
         return crossings_summary
+
+    def _concatenate_video_segments(self, video_segments: list, storage_mode: str) -> None:
+        """Concatenate segments from multiple videos into one video.
+
+        Args:
+            video_segments (list): List of dicts, each with keys:
+                - 'path': path to video file
+                - 'last_frame': last frame index with people detected (inclusive)
+            storage_mode (str): 'local_storage' or 'cloud_storage'
+
+        Returns:
+            str: Path to the concatenated video.
+
+        """
+        writer = None
+        first_segment = str(video_segments[0]["name"])
+        output_name = first_segment.replace("CAPTURED", "FILTERED")
+        output_path = f"{PhotosFileAdapter().get_filter_folder_path()}/{output_name}"
+
+        for segment in video_segments:
+            cap = cv2.VideoCapture(segment["url"])
+            try:
+                if not cap.isOpened():
+                    information = f"Error opening video file: {segment['url']}"
+                    raise ValueError(information)
+
+                # Get video properties
+                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                fourcc = cv2.VideoWriter.fourcc(*"mp4v")
+
+                # Initialize writer if not already done
+                if writer is None:
+                    writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+
+                for _ in range(segment["crossings"]["last_frame"] + 1):
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    writer.write(frame)
+            finally:
+                cap.release()
+            if writer is not None:
+                writer.release()
+
+        # archive the input videos
+        for segment in video_segments:
+            if storage_mode == "cloud_storage":
+                new_blob_name = segment["name"].replace("CAPTURE/CAPTURED_", "CAPTURE/ARCHIVE/CAPTURED_")
+                GoogleCloudStorageAdapter().move_blob(segment["name"], new_blob_name)
+            elif storage_mode == "local_storage":
+                PhotosFileAdapter().move_to_capture_archive(Path(segment["name"]).name)
+
+    async def _list_captured_videos(self, storage_mode: str) -> list:
+        """Return a list of name and URLs to captured files."""
+        if storage_mode == "cloud_storage":
+            return GoogleCloudStorageAdapter().list_blobs("CAPTURE/CAPTURED_")
+        if storage_mode == "local_storage":
+            return PhotosFileAdapter().get_all_capture_files()
+        return []
+
+    async def _process_single_video(
+        self,
+        model: YOLO,
+        video: dict,
+        token: str,
+        event: dict,
+        frame_count: int,
+        image_size: tuple,
+    ) -> dict:
+        """Process a single video stream and return the crossings summary.
+
+        Mirrors the previous inline logic from `filter_video`.
+        Raises VideoStreamNotFoundError on model track errors.
+        """
+        try:
+            results = model.track(
+                source=video["url"],
+                conf=MIN_CONFIDENCE,
+                classes=DETECTION_CLASSES,
+                stream=True,
+                imgsz=image_size,
+                persist=True,
+            )
+        except Exception as e:
+            informasjon = f"Error opening video stream from: {video['url']}"
+            logging.exception(informasjon)
+            raise VideoStreamNotFoundError(informasjon) from e
+
+        trigger_line_xyxyn = await VisionAIService().get_trigger_line_xyxy_list(token, event)
+        all_crossings = []
+        for result in results:
+            frame_count += 1
+            all_crossings.append(self.get_all_crossings(frame_count, result, trigger_line_xyxyn))
+
+        return {
+            "name": video["name"],
+            "url": video["url"],
+            "crossings": self.get_crossings_summary(all_crossings)
+        }
+
 
     def filter_crossings(self, crossings: list) -> list:
         """Filter out persons whose average speed is less than 10% of the overall average speed.
@@ -474,7 +566,7 @@ class VideoService:
 
         # Define the desired image size as a tuple (width, height)
         image_size = await ConfigAdapter().get_config_img_res_tuple(
-            token, event["id"], "VIDEO_ANALYTICS_IMAGE_SIZE"
+            token, event["id"], "DETECT_ANALYTICS_IMAGE_SIZE"
         )
         trigger_line = (
             await VisionAIService().get_trigger_line_xyxy_list(

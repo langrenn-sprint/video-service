@@ -107,6 +107,10 @@ async def run_the_video_service(token: str, event: dict, status_type: str) -> No
     """Run the service."""
     video_config = {}
     video_config = await get_config(token, event["id"], MODE)
+    storage_mode = await ConfigAdapter().get_config(
+        token, event["id"], "VIDEO_STORAGE_MODE"
+    )
+
     try:
         if video_config["video_start"]:
             if MODE == "CAPTURE":
@@ -116,7 +120,7 @@ async def run_the_video_service(token: str, event: dict, status_type: str) -> No
                 )
             elif MODE == "FILTER":
                 await VideoService().filter_video(
-                    token, event, status_type
+                    token, event, status_type, storage_mode
                 )
             elif MODE == "DETECT":
                 await VideoService().detect_crossings(

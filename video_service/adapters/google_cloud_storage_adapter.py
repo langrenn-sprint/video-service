@@ -1,5 +1,6 @@
 """Module for google cloud storage adapter."""
 
+import datetime
 import logging
 import os
 from pathlib import Path
@@ -56,7 +57,7 @@ class GoogleCloudStorageAdapter:
             f"{storage_server}/{storage_bucket}/{new_blob.name}"
         )
 
-    def list_blobs(self, prefix: str) -> list[str]:
+    def list_blobs(self, prefix: str) -> list[dict]:
         """List all blobs in the bucket that begin with the prefix."""
         servicename = "GoogleCloudStorageAdapter.get_blobs"
         storage_bucket = os.getenv("GOOGLE_STORAGE_BUCKET", "")
@@ -68,7 +69,11 @@ class GoogleCloudStorageAdapter:
             storage_client = storage.Client()
             bucket = storage_client.bucket(storage_bucket)
             blobs = bucket.list_blobs(prefix=prefix)
-            return [blob.name for blob in blobs]
+
+            return [
+                {"name": f.name, "url": f.public_url}
+                for f in blobs
+            ]
         except Exception as e:
             logging.exception(servicename)
             raise Exception(servicename) from e

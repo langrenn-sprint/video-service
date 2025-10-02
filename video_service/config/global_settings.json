@@ -15,11 +15,12 @@
     "DETECT_VIDEO_SERVICE_RUNNING": "False",
     "VIDEO_STORAGE_MODE": "cloud_storage",
     "VIDEO_SERVICE_STATUS_TYPE": "video_status",
-    "VIDEO_ANALYTICS_IMAGE_SIZE": "480x640",
+    "FILTER_ANALYTICS_IMAGE_SIZE": "480x640",
+    "DETECT_ANALYTICS_IMAGE_SIZE": "480x640",
     "VIDEO_CLIP_DURATION": 5,
     "VIDEO_CLIP_FPS": 20,
     "MAX_CLIPS_PER_FILTERED_VIDEO": 5,
-    "VIDEO_STORAGE_MODE": "local_capture",
+    "YOLO_MODEL_NAME": "yolo11n.pt",
     "VIDEO_URL": "https://harnaes.no/maalfoto/2023SkiMaal.mp4",
     "VIDEO_URL2": "/home/heming/Nedlastinger/20250525_GKOpp1.mp4"
 }

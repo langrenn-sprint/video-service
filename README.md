@@ -46,7 +46,10 @@ PHOTOS_HOST_SERVER=localhost
 PHOTOS_HOST_PORT=8092
 USERS_HOST_SERVER=localhost
 USERS_HOST_PORT=8086
-MODE=CAPTURE
+GOOGLE_APPLICATION_CREDENTIALS=/home/hh/github/secrets/application_default_credentials.json
+GOOGLE_CLOUD_PROJECT=sigma-celerity-257719
+GOOGLE_STORAGE_BUCKET=langrenn-sprint
+GOOGLE_STORAGE_SERVER=https://storage.googleapis.comMODE=CAPTURE
 
 ## Running tests
 
@@ -96,15 +99,3 @@ Failed to create DNS resolver channel with automatic monitoring of resolver conf
 echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
 ```
-
-```Zsh
-```
-        # test get blobs
-        blobs = GoogleCloudStorageAdapter().list_blobs("CAPTURE/CAPTURED_")
-        logging.info(f"Found blobs: {blobs}")
-        # test move first blob
-        if blobs:
-            first_blob = blobs[0]
-            new_blob_name = first_blob.replace("CAPTURE/CAPTURED_", "CAPTURE/ARCHIVE/CAPTURED_")
-            new_blob_url = GoogleCloudStorageAdapter().move_blob(first_blob, new_blob_name)
-            logging.info(f"Moved blob to: {new_blob_url}")

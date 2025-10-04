@@ -49,7 +49,7 @@ async def main() -> None:
             token = await do_login()
             event = await get_event(token)
 
-            if MODE not in ["CAPTURE", "FILTER", "DETECT"]:
+            if MODE not in ["CAPTURE", "DETECT"]:
                 informasjon = f"Invalid mode {MODE} - no video processing will be done."
                 raise Exception(informasjon)
 
@@ -118,14 +118,8 @@ async def run_the_video_service(token: str, event: dict, status_type: str) -> No
                 await VideoService().capture_video(
                     token, event, status_type
                 )
-            elif MODE == "FILTER":
-                await VideoService().filter_video(
-                    token, event, status_type, storage_mode
-                )
             elif MODE == "DETECT":
-                await VideoService().detect_crossings(
-                    token, event
-                )
+                await VideoService().detect_crossings(token, event, storage_mode)
         elif video_config["video_running"]:
             # should be invalid (no muliti thread) - reset
             await ConfigAdapter().update_config(

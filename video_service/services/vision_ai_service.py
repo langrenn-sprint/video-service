@@ -91,7 +91,7 @@ class VisionAIService:
             raise Exception(informasjon)
         return trigger_line_xyxy_list
 
-    def process_boxes(self, result: Results, trigger_line: list, crossings: dict, camera_location: str) -> int:
+    def process_boxes(self, result: Results, trigger_line: list, crossings: dict, camera_location: str, frame_number: int) -> int:
         """Process result from video analytics."""
         i_count = 0
         boxes = result.boxes
@@ -126,6 +126,7 @@ class VisionAIService:
                                     d_id,
                                     crossings,
                                     xyxy,
+                                    frame_number,
                                 )
                                 i_count += 1
 
@@ -182,6 +183,7 @@ class VisionAIService:
         d_id: int,
         crossings: dict,
         xyxy: Tensor,
+        frame_number: int,
     ) -> None:
         """Save image and crop_images to file."""
         logging.info(f"Line crossing! ID:{d_id}")
@@ -191,7 +193,7 @@ class VisionAIService:
         # save image to file - full size
         timestamp = taken_time.strftime("%Y%m%d_%H%M%S")
         photos_file_path = PhotosFileAdapter().get_detect_folder_path()
-        file_name = f"{photos_file_path}/{camera_location}_{timestamp}_{d_id}.jpg"
+        file_name = f"{photos_file_path}/{camera_location}_{timestamp}_{frame_number}_{d_id}.jpg"
         cv2.imwrite(f"{file_name}", result.orig_img)
 
         # Now insert the EXIF data using piexif

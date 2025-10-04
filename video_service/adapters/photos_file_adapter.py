@@ -3,8 +3,6 @@
 import logging
 from pathlib import Path
 
-import cv2
-
 from video_service.adapters.google_cloud_storage_adapter import (
     GoogleCloudStorageAdapter,
 )
@@ -15,8 +13,6 @@ VISION_ROOT_PATH = f"{Path.cwd()}/video_service/files"
 CAPTURED_FILE_PATH = f"{Path.cwd()}/video_service/files/CAPTURE"
 CAPTURED_ARCHIVE_PATH = f"{Path.cwd()}/video_service/files/CAPTURE/archive"
 DETECTED_FILE_PATH = f"{Path.cwd()}/video_service/files/DETECT"
-FILTERED_FILE_PATH = f"{Path.cwd()}/video_service/files/FILTER"
-FILTERED_ARCHIVE_PATH = f"{Path.cwd()}/video_service/files/FILTER/archive"
 PHOTOS_ARCHIVE_PATH = f"{VISION_ROOT_PATH}/archive"
 PHOTOS_URL_PATH = "files"
 
@@ -42,10 +38,6 @@ class PhotosFileAdapter:
         """Get path to detected images folder."""
         return DETECTED_FILE_PATH
 
-    def get_filter_folder_path(self) -> str:
-        """Get path to detected images folder."""
-        return FILTERED_FILE_PATH
-
     def get_photos_archive_folder_path(self) -> str:
         """Get path to photo archive folder."""
         return PHOTOS_ARCHIVE_PATH
@@ -64,32 +56,26 @@ class PhotosFileAdapter:
             logging.exception("Error getting photos")
         return photos
 
-    def get_all_capture_files(self) -> list:
+    def get_all_capture_files(self, storage_mode: str) ->  list[dict]:
         """Get all url to all captured files on file directory."""
+        file_list = []
         try:
-            files = list(Path(CAPTURED_FILE_PATH).iterdir())
-            file_list = [
-                {"name": f.name, "url": f"{CAPTURED_FILE_PATH}/{f.name}"}
-                for f in files
+            if storage_mode == "cloud_storage":
+                file_list = GoogleCloudStorageAdapter().list_blobs("CAPTURE")
+            else:
+                # Local file system
+                files = list(Path(CAPTURED_FILE_PATH).iterdir())
+                file_list = [
+                    {"name": f.name, "url": f"{CAPTURED_FILE_PATH}/{f.name}"}
+                    for f in files
                 if f.is_file()
-            ]
+                ]
         except Exception:
             informasjon = "Error getting captured files"
             logging.exception(informasjon)
             return []
         else:
             return file_list
-
-    def get_all_filter_files(self) -> list:
-        """Get all url to all filtered files on file directory."""
-        try:
-            files = Path(FILTERED_FILE_PATH).iterdir()
-            return [f"{FILTERED_FILE_PATH}/{f.name}" for f in files if f.is_file()]
-        except Exception:
-            informasjon = "Error getting captured files"
-            logging.exception(informasjon)
-        return []
-
 
     def get_all_files(self, prefix: str, suffix: str) -> list:
         """Get all url to all files on file directory with given prefix and suffix."""
@@ -188,20 +174,6 @@ class PhotosFileAdapter:
         except FileNotFoundError:
             logging.info("Destination folder not found. Creating.")
             Path(CAPTURED_ARCHIVE_PATH).mkdir(parents=True, exist_ok=True)
-            source_file.rename(destination_file)
-        except Exception:
-            logging.exception("Error moving photo to archive.")
-
-    def move_to_filter_archive(self, filename: str) -> None:
-        """Move photo to archive."""
-        source_file = Path(FILTERED_FILE_PATH) / filename
-        destination_file = Path(FILTERED_ARCHIVE_PATH) / filename
-
-        try:
-            source_file.rename(destination_file)
-        except FileNotFoundError:
-            logging.info("Destination folder not found. Creating.")
-            Path(FILTERED_ARCHIVE_PATH).mkdir(parents=True, exist_ok=True)
             source_file.rename(destination_file)
         except Exception:
             logging.exception("Error moving photo to archive.")

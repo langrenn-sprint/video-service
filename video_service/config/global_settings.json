@@ -2,7 +2,6 @@
     "CAMERA_LOCATION": "Finish",
     "TRIGGER_LINE_XYXYN": "0:0.75:1:0.75",
     "NEW_TRIGGER_LINE_PHOTO": "False",
-    "TRIGGER_LINE_CONFIG_FILE": "Trigger_line_config.jpg",
     "DETECTION_ZONE": "[(0.1, 0.1), (0.9, 0.9)]",
     "CAPTURE_VIDEO_SERVICE_AVAILABLE": "False",
     "CAPTURE_VIDEO_SERVICE_START": "False",
@@ -17,5 +16,6 @@
     "VIDEO_CLIP_FPS": 20,
     "YOLO_MODEL_NAME": "yolo11n.pt",
     "VIDEO_URL": "https://harnaes.no/maalfoto/2023SkiMaal.mp4",
-    "VIDEO_URL2": "/home/heming/Nedlastinger/20250525_GKOpp1.mp4"
+    "VIDEO_URL2": "/home/heming/Nedlastinger/20250525_GKOpp1.mp4",
+    "TRIGGER_LINE_PHOTO_URL": "https://storage.googleapis.com/langrenn-sprint/DETECT//home/hh/github/video-service/video_service/files/20251005_205406_Trigger_line_config.jpg.jpg"
 }

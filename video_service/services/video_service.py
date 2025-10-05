@@ -198,9 +198,13 @@ class VideoService:
         camera_location = await ConfigAdapter().get_config(
             token, event["id"], "CAMERA_LOCATION"
         )
+        fps = await ConfigAdapter().get_config_int(token, event["id"], "VIDEO_CLIP_FPS")
 
+        yolo_model_name = await ConfigAdapter().get_config(
+            token, event["id"], "YOLO_MODEL_NAME"
+        )
         # Load an official or custom model
-        model = YOLO("yolov8n.pt")  # Load an official Detect model
+        model = YOLO(yolo_model_name)  # Load an official Detect model
 
         # Define the desired image size as a tuple (width, height)
         image_size = await ConfigAdapter().get_config_img_res_tuple(
@@ -230,16 +234,20 @@ class VideoService:
             logging.exception(informasjon)
             raise VideoStreamNotFoundError(informasjon) from e
 
-        i_count = 0
+        url_list = []
         for frame_number, result in enumerate(results, start=1):
-            i_count += VisionAIService().process_boxes(
-                result, trigger_line, crossings, camera_location, frame_number
+            detections = VisionAIService().process_boxes(
+                result, trigger_line, crossings, camera_location, frame_number, fps
             )
+            if detections:
+                url_list.extend(detections)
 
         await ConfigAdapter().update_config(
             token, event["id"], "DETECT_VIDEO_SERVICE_RUNNING", "false"
         )
-        informasjon = f"Analytics: {i_count} detections. {informasjon}"
+        informasjon = f"Analytics: {len(url_list)} detections. {informasjon}"
+        for url in url_list:
+            informasjon += f" <a href='{url}'>klikk</a>, "
         await StatusAdapter().create_status(
             token, event, "VIDEO_ANALYTICS", informasjon
         )

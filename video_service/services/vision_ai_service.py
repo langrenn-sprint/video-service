@@ -17,6 +17,9 @@ from video_service.adapters import (
     StatusAdapter,
     VideoStreamNotFoundError,
 )
+from video_service.adapters.google_cloud_storage_adapter import (
+    GoogleCloudStorageAdapter,
+)
 
 COUNT_COORDINATES = 4
 DETECTION_BOX_MINIMUM_SIZE = 0.08
@@ -58,17 +61,22 @@ class VisionAIService:
             padded_images.append(padded_img)
 
         combined_image = np.concatenate(padded_images, axis=1)
-        crop_file_name = f"{file_name}_crop.jpg"
-        cv2.imwrite(crop_file_name, combined_image)
 
-    def get_image_info(self, camera_location: str, time_text: str) -> bytes:
+        # Save the original image to Google Cloud Storage
+        success, encoded_image = cv2.imencode(".jpg", combined_image)
+        if not success:
+            information = "Failed to encode crop image for upload."
+            raise Exception(information)
+        url = GoogleCloudStorageAdapter().upload_blob_bytes("DETECT", f"{file_name}_crop.jpg", encoded_image.tobytes(), "image/jpeg", {})
+        logging.info(f"Image uploaded to: {url}")
+
+    def get_image_info(self, camera_location: str, time_text: str) -> dict:
         """Create image info EXIF data."""
         # set the params
-        image_info = {"passeringspunkt": camera_location, "passeringstid": time_text}
-
-        # create the EXIF data and convert to bytes
-        exif_dict = {"0th": {piexif.ImageIFD.ImageDescription: json.dumps(image_info)}}
-        return piexif.dump(exif_dict)
+        return {
+            "passeringspunkt": camera_location,
+            "passeringstid": time_text
+        }
 
     async def get_trigger_line_xyxy_list(self, token: str, event: dict) -> list:
         """Get list of trigger line coordinates."""
@@ -91,9 +99,9 @@ class VisionAIService:
             raise Exception(informasjon)
         return trigger_line_xyxy_list
 
-    def process_boxes(self, result: Results, trigger_line: list, crossings: dict, camera_location: str, frame_number: int) -> int:
+    def process_boxes(self, result: Results, trigger_line: list, crossings: dict, camera_location: str, frame_number: int, fps: int) -> list:
         """Process result from video analytics."""
-        i_count = 0
+        detect_url_list = []
         boxes = result.boxes
         if boxes:
             class_values = boxes.cls
@@ -120,19 +128,20 @@ class VisionAIService:
                                     )
                             elif d_id not in crossings[crossed_line]:
                                 crossings[crossed_line].append(d_id)
-                                VisionAIService().save_detect_image(
+                                url = VisionAIService().save_detect_image(
                                     result,
                                     camera_location,
                                     d_id,
                                     crossings,
                                     xyxy,
                                     frame_number,
+                                    fps,
                                 )
-                                i_count += 1
+                                detect_url_list.append(url)
 
                 except TypeError as e:
                     logging.debug(f"TypeError: {e}")
-        return i_count
+        return detect_url_list
 
     def validate_box(self, xyxyn: Tensor) -> bool:
         """Filter out boxes not relevant."""
@@ -184,25 +193,25 @@ class VisionAIService:
         crossings: dict,
         xyxy: Tensor,
         frame_number: int,
-    ) -> None:
+        fps: int
+    ) -> str:
         """Save image and crop_images to file."""
         logging.info(f"Line crossing! ID:{d_id}")
-        taken_time = extract_datetime_from_filename(result.path)
+        taken_time = extract_datetime_from_filename(result.path, frame_number, fps)
         time_text = taken_time.strftime("%Y%m%d %H:%M:%S")
 
         # save image to file - full size
         timestamp = taken_time.strftime("%Y%m%d_%H%M%S")
-        photos_file_path = PhotosFileAdapter().get_detect_folder_path()
-        file_name = f"{photos_file_path}/{camera_location}_{timestamp}_{frame_number}_{d_id}.jpg"
-        cv2.imwrite(f"{file_name}", result.orig_img)
+        file_name = f"{camera_location}_{timestamp}_{frame_number}_{d_id}"
+        metadata = VisionAIService().get_image_info(camera_location, time_text)
 
-        # Now insert the EXIF data using piexif
-        try:
-            exif_bytes = VisionAIService().get_image_info(camera_location, time_text)
-            piexif.insert(exif_bytes, file_name)
-        except Exception as e:
-            informasjon = f"vision_ai_service - Error inserting EXIF: {e}"
-            logging.exception(informasjon)
+        # Save the original image to Google Cloud Storage
+        success, encoded_image = cv2.imencode(".jpg", result.orig_img)
+        if not success:
+            information = "Failed to encode image for upload."
+            raise Exception(information)
+        url = GoogleCloudStorageAdapter().upload_blob_bytes("DETECT", f"{file_name}.jpg", encoded_image.tobytes(), "image/jpeg", metadata)
+        logging.debug(f"Image uploaded to: {url}")
 
         # save crop images
         crop_im_list = []
@@ -219,6 +228,7 @@ class VisionAIService:
             crop_im_list,
             file_name,
         )
+        return url
 
     async def print_photo_with_trigger_line(
         self,
@@ -286,29 +296,37 @@ class VisionAIService:
             cv2.putText(im_rgb, image_time_text, (50, 50), font_face, font_scale, font_color, 2, cv2.LINE_AA)
 
             # save image to file
-            trigger_line_config_file = await ConfigAdapter().get_config(
-                token, event["id"], "TRIGGER_LINE_CONFIG_FILE"
-            )
-            photos_file_path = PhotosFileAdapter().get_photos_folder_path()
-            file_name = f"{photos_file_path}/{time_text}_{trigger_line_config_file}"
-            cv2.imwrite(file_name, cv2.cvtColor(im_rgb, cv2.COLOR_RGB2BGR))  # Convert back to BGR for saving
+            file_name = f"{event['id']}/trigger_line/{time_text}_trigger_line.jpg"
+
+            # Save the original image to Google Cloud Storage
+            success, encoded_image = cv2.imencode(".jpg", cv2.cvtColor(im_rgb, cv2.COLOR_RGB2BGR))
+            if not success:
+                information = "Failed to encode image for upload."
+                raise Exception(information)
+            url = GoogleCloudStorageAdapter().upload_blob_bytes("DETECT", file_name, encoded_image.tobytes(), "image/jpeg", {})
+            logging.info(f"Image uploaded to: {url}")
+
             informasjon = f"Trigger line <a title={file_name}>photo</a> created."
             await StatusAdapter().create_status(token, event, status_type, informasjon)
             await ConfigAdapter().update_config(
                 token, event["id"], "NEW_TRIGGER_LINE_PHOTO", "False"
+            )
+            await ConfigAdapter().update_config(
+                token, event["id"], "TRIGGER_LINE_PHOTO_URL", url
             )
 
         except TypeError as e:
             logging.debug(f"TypeError: {e}")
             # ignore
 
-def extract_datetime_from_filename(filename: str) -> datetime.datetime:
+def extract_datetime_from_filename(filename: str, frame_number: int, fps: int) -> datetime.datetime:
     """Extract a datetime object from a file path with pattern YYYYMMDD and HHMMSS."""
     match = re.search(r"(\d{8}_\d{6})", filename)
     if match:
         date_str = match.group(1)
         try:
-            return datetime.datetime.strptime(date_str, "%Y%m%d_%H%M%S").astimezone()
+            taken_time = datetime.datetime.strptime(date_str, "%Y%m%d_%H%M%S").astimezone()
+            return taken_time + datetime.timedelta(seconds=frame_number // fps)
         except ValueError:
             logging.exception(f"Invalid date format in filename: {filename}")
     return datetime.datetime.now(datetime.UTC)

@@ -92,35 +92,6 @@ class PhotosFileAdapter:
             logging.exception(informasjon)
         return my_files
 
-    async def get_trigger_line_file_url(self, token: str, event: dict) -> str:
-        """Get url to latest trigger line photo."""
-        key = "TRIGGER_LINE_CONFIG_FILE"
-        file_identifier = await ConfigAdapter().get_config(token, event["id"], key)
-        trigger_line_file_name = ""
-        try:
-            # Lists files in a directory sorted by creation date, newest first."""
-            files = list(Path(VISION_ROOT_PATH).iterdir())  # Materialize iterator and close it
-            files_with_ctime = [
-                (f, (Path(VISION_ROOT_PATH) / f).stat().st_ctime) for f in files
-            ]
-            sorted_files = [
-                f[0] for f in sorted(files_with_ctime, key=lambda x: x[1], reverse=True)
-            ]
-            trigger_line_files = [
-                f for f in sorted_files if file_identifier in f.name
-            ]
-            # Return url to newest file, archive
-            if len(trigger_line_files) == 0:
-                return ""
-            trigger_line_file_name = trigger_line_files[0]
-            if len(trigger_line_files) > 1:
-                for f in trigger_line_files[1:]:
-                    self.move_to_archive(f.name)
-
-        except Exception:
-            logging.exception("Error getting photos")
-        return f"{PHOTOS_URL_PATH}/{trigger_line_file_name}"
-
     def move_photo_to_archive(self, filename: str) -> None:
         """Move photo to archive."""
         source_file = Path(VISION_ROOT_PATH) / filename

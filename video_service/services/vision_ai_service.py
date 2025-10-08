@@ -37,6 +37,7 @@ class VisionAIService:
 
     def save_crop_images(
         self,
+        event_id: str,
         image_list: list[np.ndarray],
         file_name: str,
     ) -> None:
@@ -67,7 +68,7 @@ class VisionAIService:
         if not success:
             information = "Failed to encode crop image for upload."
             raise Exception(information)
-        url = GoogleCloudStorageAdapter().upload_blob_bytes("DETECT", f"{file_name}_crop.jpg", encoded_image.tobytes(), "image/jpeg", {})
+        url = GoogleCloudStorageAdapter().upload_blob_bytes(event_id, "DETECT", f"{file_name}_crop.jpg", encoded_image.tobytes(), "image/jpeg", {})
         logging.info(f"Image uploaded to: {url}")
 
     def get_image_info(self, camera_location: str, time_text: str) -> dict:
@@ -99,7 +100,7 @@ class VisionAIService:
             raise Exception(informasjon)
         return trigger_line_xyxy_list
 
-    def process_boxes(self, result: Results, trigger_line: list, crossings: dict, camera_location: str, frame_number: int, fps: int) -> list:
+    def process_boxes(self, event_id: str, result: Results, trigger_line: list, crossings: dict, camera_location: str, frame_number: int, fps: int) -> list:
         """Process result from video analytics."""
         detect_url_list = []
         boxes = result.boxes
@@ -129,6 +130,7 @@ class VisionAIService:
                             elif d_id not in crossings[crossed_line]:
                                 crossings[crossed_line].append(d_id)
                                 url = VisionAIService().save_detect_image(
+                                    event_id,
                                     result,
                                     camera_location,
                                     d_id,
@@ -187,6 +189,7 @@ class VisionAIService:
 
     def save_detect_image(
         self,
+        event_id: str,
         result: Results,
         camera_location: str,
         d_id: int,
@@ -210,7 +213,7 @@ class VisionAIService:
         if not success:
             information = "Failed to encode image for upload."
             raise Exception(information)
-        url = GoogleCloudStorageAdapter().upload_blob_bytes("DETECT", f"{file_name}.jpg", encoded_image.tobytes(), "image/jpeg", metadata)
+        url = GoogleCloudStorageAdapter().upload_blob_bytes(event_id, "DETECT", f"{file_name}.jpg", encoded_image.tobytes(), "image/jpeg", metadata)
         logging.debug(f"Image uploaded to: {url}")
 
         # save crop images
@@ -225,6 +228,7 @@ class VisionAIService:
         crop_im_list.append(VisionAIService().get_crop_image(result.orig_img, xyxy))
 
         VisionAIService().save_crop_images(
+            event_id,
             crop_im_list,
             file_name,
         )
@@ -284,7 +288,7 @@ class VisionAIService:
 
             # Add text (using OpenCV)
             font_face = 1
-            font_scale = 1
+            font_scale = 2
             font_color = (255, 0, 0)  # red
 
             # get the current time with timezone
@@ -296,14 +300,14 @@ class VisionAIService:
             cv2.putText(im_rgb, image_time_text, (50, 50), font_face, font_scale, font_color, 2, cv2.LINE_AA)
 
             # save image to file
-            file_name = f"{event['id']}/trigger_line/{time_text}_trigger_line.jpg"
+            file_name = f"{time_text}_trigger_line.jpg"
 
             # Save the original image to Google Cloud Storage
             success, encoded_image = cv2.imencode(".jpg", cv2.cvtColor(im_rgb, cv2.COLOR_RGB2BGR))
             if not success:
                 information = "Failed to encode image for upload."
                 raise Exception(information)
-            url = GoogleCloudStorageAdapter().upload_blob_bytes("DETECT", file_name, encoded_image.tobytes(), "image/jpeg", {})
+            url = GoogleCloudStorageAdapter().upload_blob_bytes(event["id"], "TRIGGER_LINE", file_name, encoded_image.tobytes(), "image/jpeg", {})
             logging.info(f"Image uploaded to: {url}")
 
             informasjon = f"Trigger line <a title={file_name}>photo</a> created."

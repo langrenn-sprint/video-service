@@ -2,12 +2,9 @@
 
 import datetime
 import logging
-import math
-from collections import defaultdict
 from pathlib import Path
 
 import cv2
-from torch import Tensor
 from ultralytics import YOLO
 from ultralytics.engine.results import Results
 
@@ -158,14 +155,18 @@ class VideoService:
         mode = "DETECT"
 
         # Open the video stream for captured video clips
-        video_urls = PhotosFileAdapter().get_all_capture_files(storage_mode)
+        video_urls = PhotosFileAdapter().get_all_capture_files(event["id"], storage_mode)
         if video_urls:
             await ConfigAdapter().update_config(
                 token, event["id"], f"{mode}_VIDEO_SERVICE_RUNNING", "True"
             )
         for video_stream_url in video_urls:
-            await self.detect_crossings_with_ultraltyics(token, event, video_stream_url["url"])
-            PhotosFileAdapter().move_to_capture_archive(Path(video_stream_url["name"]).name)
+            informasjon = await self.detect_crossings_with_ultraltyics(token, event, video_stream_url["url"])
+            archive_file = PhotosFileAdapter().move_to_capture_archive(event["id"], storage_mode, Path(video_stream_url["name"]).name)
+            informasjon += f" Kilde: <a href='{archive_file}'>video</a>, "
+            await StatusAdapter().create_status(
+                token, event, "VIDEO_ANALYTICS", informasjon
+            )
 
         # Update status and return result
         await ConfigAdapter().update_config(
@@ -237,7 +238,7 @@ class VideoService:
         url_list = []
         for frame_number, result in enumerate(results, start=1):
             detections = VisionAIService().process_boxes(
-                result, trigger_line, crossings, camera_location, frame_number, fps
+                event["id"], result, trigger_line, crossings, camera_location, frame_number, fps
             )
             if detections:
                 url_list.extend(detections)
@@ -248,8 +249,5 @@ class VideoService:
         informasjon = f"Analytics: {len(url_list)} detections. {informasjon}"
         for url in url_list:
             informasjon += f" <a href='{url}'>klikk</a>, "
-        await StatusAdapter().create_status(
-            token, event, "VIDEO_ANALYTICS", informasjon
-        )
         return informasjon
 

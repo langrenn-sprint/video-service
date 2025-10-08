@@ -56,12 +56,12 @@ class PhotosFileAdapter:
             logging.exception("Error getting photos")
         return photos
 
-    def get_all_capture_files(self, storage_mode: str) ->  list[dict]:
+    def get_all_capture_files(self, event_id: str, storage_mode: str) ->  list[dict]:
         """Get all url to all captured files on file directory."""
         file_list = []
         try:
             if storage_mode == "cloud_storage":
-                file_list = GoogleCloudStorageAdapter().list_blobs("CAPTURE")
+                file_list = GoogleCloudStorageAdapter().list_blobs(event_id, "/CAPTURE/")
             else:
                 # Local file system
                 files = list(Path(CAPTURED_FILE_PATH).iterdir())
@@ -121,25 +121,14 @@ class PhotosFileAdapter:
         except Exception:
             logging.exception("Error moving photo to archive.")
 
-    def move_to_captured_archive(self, filename: str) -> None:
-        """Move photo to archive."""
-        source_file = Path(CAPTURED_FILE_PATH) / filename
-        destination_file = Path(CAPTURED_ARCHIVE_PATH) / source_file.name
-
-        try:
-            source_file.rename(destination_file)
-        except FileNotFoundError:
-            logging.info("Destination folder not found. Creating...")
-            Path(CAPTURED_ARCHIVE_PATH).mkdir(parents=True, exist_ok=True)
-            source_file.rename(destination_file)
-        except Exception:
-            logging.exception("Error moving photo to archive.")
-
-    def move_to_capture_archive(self, filename: str) -> None:
+    def move_to_capture_archive(self, event_id: str, storage_mode: str, filename: str) -> str:
         """Move photo to local archive."""
+        if storage_mode == "cloud_storage":
+            return GoogleCloudStorageAdapter().move_to_capture_archive(
+                event_id, filename
+            )
         source_file = Path(CAPTURED_FILE_PATH) / filename
         destination_file = Path(CAPTURED_ARCHIVE_PATH) / filename
-
         try:
             source_file.rename(destination_file)
         except FileNotFoundError:
@@ -147,4 +136,5 @@ class PhotosFileAdapter:
             Path(CAPTURED_ARCHIVE_PATH).mkdir(parents=True, exist_ok=True)
             source_file.rename(destination_file)
         except Exception:
-            logging.exception("Error moving photo to archive.")
+            logging.exception(f"Error moving photo to archive: {filename}")
+        return destination_file.name

@@ -1,19 +1,16 @@
 """Module for status adapter."""
 
 import datetime
-import json
 import logging
 import re
 
 import cv2
 import numpy as np
-import piexif
 from torch import Tensor
 from ultralytics.engine.results import Results
 
 from video_service.adapters import (
     ConfigAdapter,
-    PhotosFileAdapter,
     StatusAdapter,
     VideoStreamNotFoundError,
 )
@@ -22,7 +19,7 @@ from video_service.adapters.google_cloud_storage_adapter import (
 )
 
 COUNT_COORDINATES = 4
-DETECTION_BOX_MINIMUM_SIZE = 0.08
+DETECTION_BOX_MINIMUM_SIZE = 0.01
 DETECTION_BOX_MAXIMUM_SIZE = 0.9
 EDGE_MARGIN = 0.02
 
@@ -71,12 +68,15 @@ class VisionAIService:
         url = GoogleCloudStorageAdapter().upload_blob_bytes(event_id, "DETECT", f"{file_name}_crop.jpg", encoded_image.tobytes(), "image/jpeg", {})
         logging.info(f"Image uploaded to: {url}")
 
-    def get_image_info(self, camera_location: str, time_text: str) -> dict:
+    def create_image_info(self, camera_location: str, time_text: str, box_confidence: float, frame_number: int, video_file_name: str) -> dict:
         """Create image info EXIF data."""
         # set the params
         return {
             "passeringspunkt": camera_location,
-            "passeringstid": time_text
+            "passeringstid": time_text,
+            "sannsynlighet": box_confidence,
+            "source_video": video_file_name,
+            "sekvensnummer": frame_number
         }
 
     async def get_trigger_line_xyxy_list(self, token: str, event: dict) -> list:
@@ -100,7 +100,7 @@ class VisionAIService:
             raise Exception(informasjon)
         return trigger_line_xyxy_list
 
-    def process_boxes(self, event_id: str, result: Results, trigger_line: list, crossings: dict, camera_location: str, frame_number: int, fps: int) -> list:
+    def process_boxes(self, event_id: str, result: Results, trigger_line: list, crossings: dict, camera_location: str, frame_number: int, fps: int, min_confidence: float) -> list:
         """Process result from video analytics."""
         detect_url_list = []
         boxes = result.boxes
@@ -118,8 +118,8 @@ class VisionAIService:
                             xyxyn, trigger_line
                         )
                         # ignore small boxes
-                        box_validation = self.validate_box(xyxyn)
-                        if (crossed_line != "false") and box_validation:
+                        box_confidence = self.validate_box(xyxyn)
+                        if (crossed_line != "false") and box_confidence > min_confidence:
                             # Extract screenshot image from the results
                             xyxy = boxes.xyxy[y]
                             if crossed_line != "100":
@@ -138,6 +138,7 @@ class VisionAIService:
                                     xyxy,
                                     frame_number,
                                     fps,
+                                    box_confidence,
                                 )
                                 detect_url_list.append(url)
 
@@ -145,19 +146,24 @@ class VisionAIService:
                     logging.debug(f"TypeError: {e}")
         return detect_url_list
 
-    def validate_box(self, xyxyn: Tensor) -> bool:
-        """Filter out boxes not relevant."""
-        box_validation = True
+    def validate_box(self, xyxyn: Tensor) -> float:
+        """Return probability of valid box from 1 to 0."""
+        box_validation = 1.0
         box_with = xyxyn.tolist()[2] - xyxyn.tolist()[0]
         box_heigth = xyxyn.tolist()[3] - xyxyn.tolist()[1]
 
-        # check if box is too small and at the edge
+        # check if box is too small or too big
         if (box_with < DETECTION_BOX_MINIMUM_SIZE) or (box_heigth < DETECTION_BOX_MINIMUM_SIZE):
-            if (xyxyn.tolist()[2] > (1 - EDGE_MARGIN)) or (xyxyn.tolist()[3] > (1 - EDGE_MARGIN)):
-                return False
-
+            return 0.0
         if (box_with > DETECTION_BOX_MAXIMUM_SIZE) or (box_heigth > DETECTION_BOX_MAXIMUM_SIZE):
-            return False
+            return 0.0
+
+        # check if box is at the edge
+        if (xyxyn.tolist()[0] < EDGE_MARGIN) or (xyxyn.tolist()[1] < EDGE_MARGIN):
+            return 0.75
+        if (xyxyn.tolist()[2] > (1 - EDGE_MARGIN)) or (xyxyn.tolist()[3] > (1 - EDGE_MARGIN)):
+            return 0.75
+
 
         return box_validation
 
@@ -196,7 +202,8 @@ class VisionAIService:
         crossings: dict,
         xyxy: Tensor,
         frame_number: int,
-        fps: int
+        fps: int,
+        box_confidence: float
     ) -> str:
         """Save image and crop_images to file."""
         logging.info(f"Line crossing! ID:{d_id}")
@@ -206,7 +213,7 @@ class VisionAIService:
         # save image to file - full size
         timestamp = taken_time.strftime("%Y%m%d_%H%M%S")
         file_name = f"{camera_location}_{timestamp}_{frame_number}_{d_id}"
-        metadata = VisionAIService().get_image_info(camera_location, time_text)
+        metadata = VisionAIService().create_image_info(camera_location, time_text, box_confidence, frame_number, result.path)
 
         # Save the original image to Google Cloud Storage
         success, encoded_image = cv2.imencode(".jpg", result.orig_img)

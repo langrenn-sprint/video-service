@@ -219,6 +219,10 @@ class VideoService:
         await ConfigAdapter().update_config(
             token, event["id"], "DETECT_VIDEO_SERVICE_RUNNING", "True"
         )
+        min_confidence = float(await ConfigAdapter().get_config(
+            token, event["id"], "DETECTION_CONFIDENCE_THRESHOLD"
+        ))
+
 
         # Perform tracking with the model
         try:
@@ -238,7 +242,7 @@ class VideoService:
         url_list = []
         for frame_number, result in enumerate(results, start=1):
             detections = VisionAIService().process_boxes(
-                event["id"], result, trigger_line, crossings, camera_location, frame_number, fps
+                event["id"], result, trigger_line, crossings, camera_location, frame_number, fps, min_confidence
             )
             if detections:
                 url_list.extend(detections)

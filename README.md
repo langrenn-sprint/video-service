@@ -1,8 +1,8 @@
-# video-service
+### video-service
 A service to capture relevant video clips from an online camera. The service can run as worker in 2 modes
-### CAPTURE
+## CAPTURE
 Capture of a stream, save as video clips in configurable resolution and duration.
-### DETECT
+## DETECT
 Line crossing detection. The service can run as stand alone worker or take input from worker CAPTURE.
 Configuration from database (default values in global_settings.json) will always be shared between the workers wile each workers mode will be defined through environment (env) configuration.
 
@@ -47,7 +47,8 @@ USERS_HOST_PORT=8086
 GOOGLE_APPLICATION_CREDENTIALS=/home/hh/github/secrets/application_default_credentials.json
 GOOGLE_CLOUD_PROJECT=sigma-celerity-257719
 GOOGLE_STORAGE_BUCKET=langrenn-sprint
-GOOGLE_STORAGE_SERVER=https://storage.googleapis.comMODE=CAPTURE
+GOOGLE_STORAGE_SERVER=https://storage.googleapis.com
+MODE=DETECT
 
 ## Running tests
 
@@ -82,8 +83,7 @@ docker compose up event-service user-service photo-service mongodb
 docker system prune -a --volumes
 ```
 
-### Push to docker registry manually (CLI)
-
+### Push to github docker registry manually (CLI)
 docker compose build
 docker login ghcr.io -u github
 password: Use a generated access token from GitHub (https://github.com/settings/tokens/1878556677)
@@ -91,9 +91,25 @@ docker tag ghcr.io/langrenn-sprint/video-service:test ghcr.io/langrenn-sprint/vi
 docker push ghcr.io/langrenn-sprint/video-service:latest
 
 
-### Troubleshooting
-Failed to create DNS resolver channel with automatic monitoring of resolver configuration changes.
-```Zsh
-echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf
-sudo sysctl -p
-```
+### Start service in google cloud run (only works in DETECT mode and with cloud_storage)
+
+## Create artifact registry and grant access to your service account
+gcloud artifacts repositories create docker-repository \
+  --repository-format=docker \
+  --location="europe-north1" \
+  --description="Docker repository"
+
+gcloud projects add-iam-policy-binding [PROJECT_ID] \
+--member="serviceAccount:[SERVICE_ACCOUNT_EMAIL]" \
+--role="roles/artifactregistry.writer"
+
+## Upload Container
+This is handled by github_actions - see .github/workflows/deploy_google.yml
+
+## Start Cloud Run instance
+- Go to Worker Pools and Click Deploy Container
+- Select "Depoloy one revision" and paste container image uri (or select from the list)
+- Configure scaling (recommendation: ?)
+- Paste environment variables from this file - remember to modify passwords!
+- Environment - make sure MODE = DETECT
+- Click create!

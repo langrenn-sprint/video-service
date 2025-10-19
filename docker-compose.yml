@@ -10,14 +10,7 @@ services:
       - PHOTOS_HOST_PORT=8080
       - USERS_HOST_SERVER=user-service
       - USERS_HOST_PORT=8080
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      - GOOGLE_STORAGE_BUCKET=${GOOGLE_STORAGE_BUCKET}
+      - GOOGLE_STORAGE_SERVER=${GOOGLE_STORAGE_SERVER}
       - MODE=CAPTURE
-    volumes:
-      - type: bind
-        source: video_service/config/global_settings.json
-        target: /app/config/global_settings.json
-      - type: bind
-        source: video_service/files
-        target: /app/video_service/files
-      - type: bind
-        source: error.log
-        target: /app/error.log

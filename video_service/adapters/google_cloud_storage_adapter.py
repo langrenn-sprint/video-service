@@ -123,8 +123,9 @@ class GoogleCloudStorageAdapter:
             storage_client = storage.Client()
             bucket = storage_client.bucket(storage_bucket)
             blobs = bucket.list_blobs(prefix=f"{event_id}/{prefix}")
-            for f in blobs:
-                logging.debug(f"{servicename} found blob: {f.name}")
+            if blobs:
+                for f in blobs:
+                    logging.debug(f"{servicename} found blob: {f.name}")
             else:
                 logging.debug(f"{servicename} found no blobs.")
 

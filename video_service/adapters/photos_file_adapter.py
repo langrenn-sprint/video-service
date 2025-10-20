@@ -61,7 +61,7 @@ class PhotosFileAdapter:
         file_list = []
         try:
             if storage_mode == "cloud_storage":
-                file_list = GoogleCloudStorageAdapter().list_blobs(event_id, "/CAPTURE/")
+                file_list = GoogleCloudStorageAdapter().list_blobs(event_id, "CAPTURE/")
             else:
                 # Local file system
                 files = list(Path(CAPTURED_FILE_PATH).iterdir())

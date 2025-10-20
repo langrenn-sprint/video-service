@@ -4,6 +4,7 @@ import logging
 import os
 from pathlib import Path
 
+from google.api_core.exceptions import Forbidden, NotFound
 from google.cloud import storage
 
 
@@ -60,9 +61,10 @@ class GoogleCloudStorageAdapter:
             err_msg = "GOOGLE_STORAGE_BUCKET or GOOGLE_STORAGE_SERVER not found in .env"
             raise Exception(err_msg)
 
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(storage_bucket)
+
         try:
-            storage_client = storage.Client()
-            bucket = storage_client.bucket(storage_bucket)
             destination_blob_name = (
                 f"{event_id}/{destination_folder}/{filename}"
             )
@@ -70,6 +72,14 @@ class GoogleCloudStorageAdapter:
             if metadata:
                 blob.metadata = metadata
             blob.upload_from_string(data, content_type=content_type)
+        except Forbidden as e:
+            informasjon = f"{servicename} Access denied listing blobs for {bucket.name}"
+            logging.exception(informasjon)
+            raise Exception(informasjon) from e
+        except NotFound as e:
+            informasjon = f"{servicename} Bucket {bucket.name} not found"
+            logging.exception(informasjon)
+            raise Exception(informasjon) from e
         except Exception as e:
             logging.exception(servicename)
             raise Exception(servicename) from e
@@ -118,21 +128,25 @@ class GoogleCloudStorageAdapter:
         if storage_bucket == "":
             err_msg = "GOOGLE_STORAGE_BUCKET not found in .env"
             raise Exception(err_msg)
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(storage_bucket)
 
         try:
-            storage_client = storage.Client()
-            bucket = storage_client.bucket(storage_bucket)
-            blobs = bucket.list_blobs(prefix=f"{event_id}/{prefix}")
-            if blobs:
-                for f in blobs:
-                    logging.debug(f"{servicename} found blob: {f.name}")
-            else:
-                logging.debug(f"{servicename} found no blobs.")
+            blobs = list(bucket.list_blobs(prefix=f"{event_id}/{prefix}"))
+            logging.debug(f"{servicename} found {len(blobs)} blobs from {event_id}/{prefix}.")
 
             return [
                 {"name": f.name, "url": f.public_url}
                 for f in blobs
             ]
+        except Forbidden as e:
+            informasjon = f"{servicename} Access denied listing blobs for {bucket.name}"
+            logging.exception(informasjon)
+            raise Exception(informasjon) from e
+        except NotFound as e:
+            informasjon = f"{servicename} Bucket {bucket.name} not found"
+            logging.exception(informasjon)
+            raise Exception(informasjon) from e
         except Exception as e:
             logging.exception(servicename)
             raise Exception(servicename) from e

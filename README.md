@@ -10,7 +10,7 @@ Configuration from database (default values in global_settings.json) will always
 Sets usage of local file storage or cloud services such as Buckets
 valid storage modes (VIDEO_STORAGE_MODE):
 local_storage - pushing video to cloud bucket
-cloud_storage - pushing image detectsions to cloud bucket and message to pubsub
+cloud_storage - pushing image detectsions to cloud bucket
 
 ## Requirement for development
 

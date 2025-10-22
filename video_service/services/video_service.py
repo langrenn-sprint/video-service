@@ -251,7 +251,11 @@ class VideoService:
             token, event["id"], "DETECT_VIDEO_SERVICE_RUNNING", "false"
         )
         informasjon = f"Analytics: {len(url_list)} detections. {informasjon}"
-        for url in url_list:
-            informasjon += f" <a href='{url}'>klikk</a>, "
+        if url_list:
+            await ConfigAdapter().update_config(
+                token, event["id"], "LATEST_DETECTED_PHOTO_URL", url_list[0]
+            )
+            for url in url_list:
+                informasjon += f" <a href='{url}'>{url[-10]}</a>, "
         return informasjon
 

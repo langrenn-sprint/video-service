@@ -17,6 +17,6 @@
     "VIDEO_CLIP_FPS": 20,
     "YOLO_MODEL_NAME": "yolo11n.pt",
     "VIDEO_URL": "https://harnaes.no/maalfoto/2023SkiMaal.mp4",
-    "VIDEO_URL2": "/home/heming/Nedlastinger/20250525_GKOpp1.mp4",
-    "TRIGGER_LINE_PHOTO_URL": "https://storage.googleapis.com/langrenn-sprint/DETECT//home/hh/github/video-service/video_service/files/20251005_205406_Trigger_line_config.jpg.jpg"
+    "LATEST_DETECTED_PHOTO_URL": "",
+    "TRIGGER_LINE_PHOTO_URL": ""
 }

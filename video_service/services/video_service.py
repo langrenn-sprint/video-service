@@ -14,9 +14,6 @@ from video_service.adapters import (
     StatusAdapter,
     VideoStreamNotFoundError,
 )
-from video_service.adapters.google_cloud_storage_adapter import (
-    GoogleCloudStorageAdapter,
-)
 from video_service.services.vision_ai_service import (
     VisionAIService,
 )
@@ -129,7 +126,6 @@ class VideoService:
         )
         return f"Video capture: {clip_count} clips saved."
 
-
     async def detect_crossings(
         self,
         token: str,
@@ -148,80 +144,62 @@ class VideoService:
         Returns:
             A string indicating the status of the video analytics.
 
-        Raises:
-            VideoStreamNotFoundError: If the video stream cannot be found.
-
         """
-        mode = "DETECT"
-
         # Open the video stream for captured video clips
         video_urls = PhotosFileAdapter().get_all_capture_files(event["id"], storage_mode)
         if video_urls:
             await ConfigAdapter().update_config(
-                token, event["id"], f"{mode}_VIDEO_SERVICE_RUNNING", "True"
+                token, event["id"], "DETECT_VIDEO_SERVICE_RUNNING", "True"
             )
-        for video_stream_url in video_urls:
-            informasjon = await self.detect_crossings_with_ultraltyics(token, event, video_stream_url["url"])
-            archive_file = PhotosFileAdapter().move_to_capture_archive(event["id"], storage_mode, Path(video_stream_url["name"]).name)
-            informasjon += f" Kilde: <a href='{archive_file}'>video</a>, "
-            await StatusAdapter().create_status(
-                token, event, "VIDEO_ANALYTICS", informasjon
+            video_settings = await self.get_video_settings(token, event)
+            for video_stream_url in video_urls:
+                try:
+                    url_list = self.detect_crossings_with_ultraltyics(event, video_stream_url["url"], video_settings)
+                    if url_list:
+                        await ConfigAdapter().update_config(
+                            token, event["id"], "LATEST_DETECTED_PHOTO_URL", url_list[0]
+                        )
+                    archive_file = PhotosFileAdapter().move_to_capture_archive(event["id"], storage_mode, Path(video_stream_url["name"]).name)
+                    informasjon = f" Deteksjoner: <a href='{archive_file}'>video</a>, {len(url_list)} passeringer."
+                except VideoStreamNotFoundError:
+                    error_file = PhotosFileAdapter().move_to_error_archive(event["id"], storage_mode, Path(video_stream_url["name"]).name)
+                    informasjon = f"Error processing stream from: {error_file}"
+                    logging.exception(informasjon)
+                await StatusAdapter().create_status(
+                    token, event, "VIDEO_ANALYTICS", informasjon
+                )
+
+            # Update status and return result
+            await ConfigAdapter().update_config(
+                token, event["id"], "DETECT_VIDEO_SERVICE_RUNNING", "false"
             )
+        return f"Crossings detection completed, processed {len(video_urls)} videos."
 
-        # Update status and return result
-        await ConfigAdapter().update_config(
-            token, event["id"], f"{mode}_VIDEO_SERVICE_RUNNING", "False"
-        )
-        return "Crossings detection completed."
-
-    async def detect_crossings_with_ultraltyics(
+    def detect_crossings_with_ultraltyics(
         self,
-        token: str,
         event: dict,
         video_stream_url: str,
-    ) -> str:
+        video_settings: dict,
+    ) -> list:
         """Analyze video and capture screenshots of line crossings.
 
         Args:
             token: To update databes
             event: Event details
             video_stream_url: Url to the video stream to analyze.
+            video_settings: Video settings from config.
 
         Returns:
-            A string indicating the status of the video analytics.
+            A list with public URLs to all detections.
 
         Raises:
             VideoStreamNotFoundError: If the video stream cannot be found.
 
         """
         crossings = {"100": [], "90": {}, "80": {}}
-        informasjon = ""
-        camera_location = await ConfigAdapter().get_config(
-            token, event["id"], "CAMERA_LOCATION"
-        )
-        fps = await ConfigAdapter().get_config_int(token, event["id"], "VIDEO_CLIP_FPS")
 
-        yolo_model_name = await ConfigAdapter().get_config(
-            token, event["id"], "YOLO_MODEL_NAME"
-        )
         # Load an official or custom model
-        model = YOLO(yolo_model_name)  # Load an official Detect model
-
-        # Define the desired image size as a tuple (width, height)
-        image_size = await ConfigAdapter().get_config_img_res_tuple(
-            token, event["id"], "DETECT_ANALYTICS_IMAGE_SIZE"
-        )
-        trigger_line = (
-            await VisionAIService().get_trigger_line_xyxy_list(
-                token, event
-            )
-        )
-        await ConfigAdapter().update_config(
-            token, event["id"], "DETECT_VIDEO_SERVICE_RUNNING", "True"
-        )
-        min_confidence = float(await ConfigAdapter().get_config(
-            token, event["id"], "DETECTION_CONFIDENCE_THRESHOLD"
-        ))
+        model = YOLO(video_settings["yolo_model_name"])  # Load an official Detect model
 
 
         # Perform tracking with the model
@@ -231,7 +209,7 @@ class VideoService:
                 conf=MIN_CONFIDENCE,
                 classes=DETECTION_CLASSES,
                 stream=True,
-                imgsz=image_size,
+                imgsz=video_settings["image_size"],
                 persist=True
             )
         except Exception as e:
@@ -242,20 +220,46 @@ class VideoService:
         url_list = []
         for frame_number, result in enumerate(results, start=1):
             detections = VisionAIService().process_boxes(
-                event["id"], result, trigger_line, crossings, camera_location, frame_number, fps, min_confidence
+                event["id"], result, video_settings["trigger_line"], crossings, video_settings["camera_location"], frame_number, video_settings["fps"], video_settings["min_confidence"]
             )
             if detections:
                 url_list.extend(detections)
 
-        await ConfigAdapter().update_config(
-            token, event["id"], "DETECT_VIDEO_SERVICE_RUNNING", "false"
-        )
-        informasjon = f"Analytics: {len(url_list)} detections. {informasjon}"
-        if url_list:
-            await ConfigAdapter().update_config(
-                token, event["id"], "LATEST_DETECTED_PHOTO_URL", url_list[0]
-            )
-            for url in url_list:
-                informasjon += f" <a href='{url}'>{url[-10]}</a>, "
-        return informasjon
+        return url_list
 
+    async def get_video_settings(
+        self,
+        token: str,
+        event: dict,
+    ) -> dict:
+        """Get video settings from config.
+
+        Args:
+            token: To access database
+            event: Event details
+
+        Returns:
+            A dict with video settings.
+
+        """
+        video_settings = {}
+        video_settings["camera_location"] = await ConfigAdapter().get_config(
+            token, event["id"], "CAMERA_LOCATION"
+        )
+        video_settings["fps"] = await ConfigAdapter().get_config_int(token, event["id"], "VIDEO_CLIP_FPS")
+
+        video_settings["yolo_model_name"] = await ConfigAdapter().get_config(
+            token, event["id"], "YOLO_MODEL_NAME"
+        )
+        video_settings["image_size"] = await ConfigAdapter().get_config_img_res_tuple(
+            token, event["id"], "DETECT_ANALYTICS_IMAGE_SIZE"
+        )
+        video_settings["trigger_line"] = (
+            await VisionAIService().get_trigger_line_xyxy_list(
+                token, event
+            )
+        )
+        video_settings["min_confidence"] = float(await ConfigAdapter().get_config(
+            token, event["id"], "DETECTION_CONFIDENCE_THRESHOLD"
+        ))
+        return video_settings

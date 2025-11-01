@@ -12,6 +12,7 @@ from .config_adapter import ConfigAdapter
 VISION_ROOT_PATH = f"{Path.cwd()}/video_service/files"
 CAPTURED_FILE_PATH = f"{Path.cwd()}/video_service/files/CAPTURE"
 CAPTURED_ARCHIVE_PATH = f"{Path.cwd()}/video_service/files/CAPTURE/archive"
+CAPTURED_ERROR_ARCHIVE_PATH = f"{Path.cwd()}/video_service/files/CAPTURE/error_archive"
 DETECTED_FILE_PATH = f"{Path.cwd()}/video_service/files/DETECT"
 PHOTOS_ARCHIVE_PATH = f"{VISION_ROOT_PATH}/archive"
 PHOTOS_URL_PATH = "files"
@@ -137,4 +138,22 @@ class PhotosFileAdapter:
             source_file.rename(destination_file)
         except Exception:
             logging.exception(f"Error moving photo to archive: {filename}")
+        return destination_file.name
+
+    def move_to_error_archive(self, event_id: str, storage_mode: str, filename: str) -> str:
+        """Move photo to local error archive."""
+        if storage_mode == "cloud_storage":
+            return GoogleCloudStorageAdapter().move_to_error_archive(
+                event_id, filename
+            )
+        source_file = Path(CAPTURED_FILE_PATH) / filename
+        destination_file = Path(CAPTURED_ERROR_ARCHIVE_PATH) / filename
+        try:
+            source_file.rename(destination_file)
+        except FileNotFoundError:
+            logging.info("Destination folder not found. Creating.")
+            Path(CAPTURED_ERROR_ARCHIVE_PATH).mkdir(parents=True, exist_ok=True)
+            source_file.rename(destination_file)
+        except Exception:
+            logging.exception(f"Error moving photo to error archive: {filename}")
         return destination_file.name

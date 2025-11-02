@@ -46,7 +46,6 @@ class VideoService:
             VideoStreamNotFoundError: If the video stream cannot be found.
 
         """
-        mode = "CAPTURE"
         informasjon = ""
         video_stream_url = await ConfigAdapter().get_config(token, event["id"], "VIDEO_URL")
         video_clip_fps = await ConfigAdapter().get_config_int(token, event["id"], "VIDEO_CLIP_FPS")
@@ -69,6 +68,7 @@ class VideoService:
         frame_interval = max(1, round(frame_rate / video_clip_fps))
         frames_per_clip = frame_rate * clip_duration  # Calculate the number of frames for a 15-second clip
         clip_count = 0
+        error_count = 0
         # Update status and return result
         await StatusAdapter().create_status(
             token,
@@ -79,34 +79,21 @@ class VideoService:
 
         try:
             while True:
-                clip_frames = []
-                frame_idx = 0
-                for frame_idx in range(frames_per_clip):
-                    ret, frame = video_capture.read()
-                    if not ret:
-                        break  # End of video stream
-
-                    if frame_idx % frame_interval == 0:
-                        clip_frames.append(frame)
-
-                if not clip_frames:
-                    break  # No more frames to process
-
-                # Save the clip to a file
-                timestamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
-                clip_filename = f"{video_file_path}/CAPTURED_{timestamp}_{clip_count}.mp4"
                 clip_count += 1
-
-                # Define the codec and create a VideoWriter object
-                fourcc = cv2.VideoWriter.fourcc(*"mp4v")
-                out = cv2.VideoWriter(clip_filename, fourcc, video_clip_fps, image_size)
-
-                for frame in clip_frames:
-                    out.write(frame)
-                out.release()
+                captured = self.capture_video_clip(
+                    video_capture,
+                    video_file_path,
+                    video_clip_fps,
+                    image_size,
+                    frame_interval,
+                    frames_per_clip,
+                    clip_count,
+                )
+                if not captured:
+                    error_count += 1
 
                 continue_tracking = await ConfigAdapter().get_config_bool(
-                    token, event["id"], f"{mode}_VIDEO_SERVICE_START"
+                    token, event["id"], "CAPTURE_VIDEO_SERVICE_START"
                 )
                 if not continue_tracking:
                     break  # No more frames to process
@@ -114,17 +101,83 @@ class VideoService:
         finally:
             video_capture.release()
             await ConfigAdapter().update_config(
-                token, event["id"], f"{mode}_VIDEO_SERVICE_RUNNING", "False"
+                token, event["id"], "CAPTURE_VIDEO_SERVICE_RUNNING", "False"
             )
 
         # Update status and return result
+        informasjon = f"Video capture completed: {clip_count} clips saved, {error_count} errors."
         await StatusAdapter().create_status(
             token,
             event,
             status_type,
-            f"Video capture: {clip_count} clips saved.",
+            informasjon,
         )
-        return f"Video capture: {clip_count} clips saved."
+        return informasjon
+
+    def capture_video_clip(
+        self,
+        video_capture: cv2.VideoCapture,
+        video_file_path: str,
+        video_clip_fps: int,
+        image_size: tuple,
+        frame_interval: int,
+        frames_per_clip: int,
+        clip_count: int,
+    ) -> bool:
+        """Capture a video clip from the video stream.
+
+        Args:
+            video_capture: OpenCV VideoCapture object.
+            video_file_path: Path to save the video clip.
+            video_clip_fps: Frames per second for the video clip.
+            image_size: Size of the video frames.
+            frame_interval: Interval between frames to capture.
+            frames_per_clip: Total number of frames in the clip.
+            clip_count: Current clip count.
+
+        Returns:
+            bool: True if the clip was successfully captured, False otherwise.
+
+        """
+        clip_frames = []
+        frame_idx = 0
+        for frame_idx in range(frames_per_clip):
+            ret, frame = video_capture.read()
+            if not ret:
+                break  # End of video stream
+
+            if frame_idx % frame_interval == 0:
+                clip_frames.append(frame)
+
+        if clip_frames:
+            # Save the clip to a file
+            timestamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
+            base = Path(video_file_path)
+            tmp_path = base / f"TMP_CAPTURED_{timestamp}_{clip_count}.mp4"
+            final_path = base / f"CAPTURED{timestamp}_{clip_count}.mp4"
+            clip_count += 1
+
+            # Define the codec and create a VideoWriter object
+            fourcc = cv2.VideoWriter.fourcc(*"mp4v")
+            out = cv2.VideoWriter(str(tmp_path), fourcc, video_clip_fps, image_size)
+
+            if not out.isOpened():
+                out.release()
+                logging.exception("VideoWriter failed to open for %s", str(tmp_path))
+                return False
+
+            try:
+                for frame in clip_frames:
+                    out.write(frame)
+            finally:
+                out.release()
+
+            try:
+                tmp_path.replace(final_path)
+            except Exception:
+                logging.exception("Failed to rename %s to %s", tmp_path, final_path)
+                return False
+        return True
 
     async def detect_crossings(
         self,
@@ -161,9 +214,9 @@ class VideoService:
                         )
                     archive_file = PhotosFileAdapter().move_to_capture_archive(event["id"], storage_mode, Path(video_stream_url["name"]).name)
                     informasjon = f" Deteksjoner: <a href='{archive_file}'>video</a>, {len(url_list)} passeringer."
-                except VideoStreamNotFoundError:
+                except VideoStreamNotFoundError as e:
                     error_file = PhotosFileAdapter().move_to_error_archive(event["id"], storage_mode, Path(video_stream_url["name"]).name)
-                    informasjon = f"Error processing stream from: {error_file}"
+                    informasjon = f"Error processing stream from: {error_file} - details: {e!s}"
                     logging.exception(informasjon)
                 await StatusAdapter().create_status(
                     token, event, "VIDEO_ANALYTICS", informasjon

@@ -7,8 +7,6 @@ from video_service.adapters.google_cloud_storage_adapter import (
     GoogleCloudStorageAdapter,
 )
 
-from .config_adapter import ConfigAdapter
-
 VISION_ROOT_PATH = f"{Path.cwd()}/video_service/files"
 CAPTURED_FILE_PATH = f"{Path.cwd()}/video_service/files/CAPTURE"
 CAPTURED_ARCHIVE_PATH = f"{Path.cwd()}/video_service/files/CAPTURE/archive"

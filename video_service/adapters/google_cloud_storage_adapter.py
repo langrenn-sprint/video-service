@@ -108,7 +108,6 @@ class GoogleCloudStorageAdapter:
             f"{storage_server}/{storage_bucket}/{new_blob.name}"
         )
 
-
     def move_to_error_archive(self, event_id: str, filename: str) -> str:
         """Move photo to local error archive."""
         destination_file = ""
@@ -120,7 +119,6 @@ class GoogleCloudStorageAdapter:
         except Exception:
             logging.exception("Error moving photo to error archive.")
         return destination_file
-
 
     def move_to_capture_archive(self, event_id: str, filename: str) -> str:
         """Move photo to local archive."""

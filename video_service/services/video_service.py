@@ -154,7 +154,7 @@ class VideoService:
             timestamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
             base = Path(video_file_path)
             tmp_path = base / f"TMP_CAPTURED_{timestamp}_{clip_count}.mp4"
-            final_path = base / f"CAPTURED{timestamp}_{clip_count}.mp4"
+            final_path = base / f"RAW_CAPTURED_{timestamp}_{clip_count}.mp4"
             clip_count += 1
 
             # Define the codec and create a VideoWriter object

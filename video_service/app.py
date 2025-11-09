@@ -36,7 +36,7 @@ file_handler.setFormatter(formatter)
 logging.getLogger().addHandler(file_handler)
 
 MODE = os.getenv("MODE", "DUMMY")
-PhotosFileAdapter().init_video_folder(MODE)
+PhotosFileAdapter().init_video_folders()
 
 async def main() -> None:
     """CLI for analysing video stream."""

@@ -49,7 +49,7 @@ class VideoService:
         informasjon = ""
         video_stream_url = await ConfigAdapter().get_config(token, event["id"], "VIDEO_URL")
         video_clip_fps = await ConfigAdapter().get_config_int(token, event["id"], "VIDEO_CLIP_FPS")
-        video_file_path = PhotosFileAdapter().get_capture_folder_path()
+        video_file_path = PhotosFileAdapter().get_raw_capture_folder_path()
 
         clip_duration = await ConfigAdapter().get_config_int(
             token, event["id"], "VIDEO_CLIP_DURATION"
@@ -141,10 +141,18 @@ class VideoService:
         """
         clip_frames = []
         frame_idx = 0
+        consecutive_errors = 0
+        max_consecutive_errors = 10
+
         for frame_idx in range(frames_per_clip):
             ret, frame = video_capture.read()
             if not ret:
-                break  # End of video stream
+                    consecutive_errors += 1
+                    if consecutive_errors >= max_consecutive_errors:
+                        logging.warning("Too many consecutive read errors, ending clip early")
+                        break
+                    continue  # Skip this frame and try next
+            consecutive_errors = 0  # Reset on successful read
 
             if frame_idx % frame_interval == 0:
                 clip_frames.append(frame)
@@ -154,7 +162,7 @@ class VideoService:
             timestamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
             base = Path(video_file_path)
             tmp_path = base / f"TMP_CAPTURED_{timestamp}_{clip_count}.mp4"
-            final_path = base / f"RAW_CAPTURED_{timestamp}_{clip_count}.mp4"
+            final_path = base / f"CAPTURED_{timestamp}_{clip_count}.mp4"
             clip_count += 1
 
             # Define the codec and create a VideoWriter object

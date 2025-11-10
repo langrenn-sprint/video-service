@@ -8,11 +8,11 @@ from video_service.adapters.google_cloud_storage_adapter import (
     GoogleCloudStorageAdapter,
 )
 
-VISION_ROOT_PATH = f"{Path.cwd()}/integration_service/files"
-CAPTURED_FILE_PATH = f"{Path.cwd()}/integration_service/files/CAPTURE"
-CAPTURED_RAW_FILE_PATH = f"{Path.cwd()}/video_service/files/RAW_CAPTURE/"
-CAPTURED_ARCHIVE_PATH = f"{Path.cwd()}/integration_service/files/CAPTURE/archive"
-CAPTURED_ERROR_ARCHIVE_PATH = f"{Path.cwd()}/integration_service/files/CAPTURE/error_archive"
+VISION_ROOT_PATH = f"{Path.cwd()}/video_service/files"
+CAPTURED_FILE_PATH = f"{VISION_ROOT_PATH}/CAPTURE"
+CAPTURED_RAW_FILE_PATH = f"{VISION_ROOT_PATH}/RAW_CAPTURE"
+CAPTURED_ARCHIVE_PATH = f"{VISION_ROOT_PATH}/CAPTURE/archive"
+CAPTURED_ERROR_ARCHIVE_PATH = f"{VISION_ROOT_PATH}/CAPTURE/error_archive"
 PHOTOS_ARCHIVE_PATH = f"{VISION_ROOT_PATH}/archive"
 PHOTOS_URL_PATH = "files"
 
@@ -88,7 +88,7 @@ class PhotosFileAdapter:
                 file_list = GoogleCloudStorageAdapter().list_blobs(event_id, "RAW_CAPTURE/")
             else:
                 # Local file system
-                files = list(Path(CAPTURED_FILE_PATH).iterdir())
+                files = list(Path(CAPTURED_RAW_FILE_PATH).iterdir())
                 file_list = [
                     {"name": f.name, "url": f"{CAPTURED_RAW_FILE_PATH}/{f.name}"}
                     for f in files
@@ -194,17 +194,26 @@ class PhotosFileAdapter:
             raise ValueError(err_msg) from e
 
         try:
+            # Build ffmpeg command with conditional audio handling
+            # Using -c:a aac if audio exists, otherwise ffmpeg will ignore it
             command = [
                 "ffmpeg",
-                "-i", str(input_path),
-                "-c:v", "libx264",  # H.264 video codec
-                "-preset", "fast",  # Encoding speed preset
-                "-crf", "23",      # Constant Rate Factor (quality)
-                "-c:a", "aac",    # AAC audio codec
-                "-b:a", "128k",    # Audio bitrate
+                "-i", input_file,
+                "-c:v", "libx264",    # H.264 video codec
+                "-preset", "fast",     # Encoding speed preset
+                "-crf", "23",          # Constant Rate Factor (quality)
+                "-c:a", "aac",        # AAC audio codec (ignored if no audio stream)
+                "-b:a", "128k",        # Audio bitrate (ignored if no audio stream)
+                "-map", "0:v:0",       # Map first video stream
+                "-map", "0:a?",        # Map audio if present (? makes it optional)
                 str(output_path)
             ]
             subprocess.run(command, check=True)  # noqa: S603
+
+            # delete input file
+            input_path.unlink()
+            logging.debug(f"Deleted raw video file: {input_file}")
+
         except subprocess.CalledProcessError as e:
             informasjon = f"FFmpeg command failed with error for {input_file}"
             logging.exception(informasjon)

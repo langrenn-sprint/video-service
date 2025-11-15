@@ -89,7 +89,9 @@ class VideoService:
                     frames_per_clip,
                     clip_count,
                 )
-                if not captured:
+                if captured:
+                    logging.info("Successfully captured clip with timing %s", captured)
+                else:
                     error_count += 1
 
                 continue_tracking = await ConfigAdapter().get_config_bool(
@@ -123,7 +125,7 @@ class VideoService:
         frame_interval: int,
         frames_per_clip: int,
         clip_count: int,
-    ) -> bool:
+    ) -> dict:
         """Capture a video clip from the video stream.
 
         Args:
@@ -136,13 +138,14 @@ class VideoService:
             clip_count: Current clip count.
 
         Returns:
-            bool: True if the clip was successfully captured, False otherwise.
+            dict: A dictionary containing timestamp for start, stop, and finalize of recording.
 
         """
         clip_frames = []
         frame_idx = 0
         consecutive_errors = 0
         max_consecutive_errors = 10
+        t_start = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
 
         for frame_idx in range(frames_per_clip):
             ret, frame = video_capture.read()
@@ -157,12 +160,13 @@ class VideoService:
             if frame_idx % frame_interval == 0:
                 clip_frames.append(frame)
 
+        t_stop = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
+
         if clip_frames:
             # Save the clip to a file
-            timestamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
             base = Path(video_file_path)
-            tmp_path = base / f"TMP_CAPTURED_{timestamp}_{clip_count}.mp4"
-            final_path = base / f"CAPTURED_{timestamp}_{clip_count}.mp4"
+            tmp_path = base / f"TMP_CAPTURED_{t_start}_{clip_count}.mp4"
+            final_path = base / f"CAPTURED_{t_start}_{clip_count}.mp4"
             clip_count += 1
 
             # Define the codec and create a VideoWriter object
@@ -172,7 +176,7 @@ class VideoService:
             if not out.isOpened():
                 out.release()
                 logging.exception("VideoWriter failed to open for %s", str(tmp_path))
-                return False
+                return {}
 
             try:
                 for frame in clip_frames:
@@ -184,8 +188,14 @@ class VideoService:
                 tmp_path.replace(final_path)
             except Exception:
                 logging.exception("Failed to rename %s to %s", tmp_path, final_path)
-                return False
-        return True
+                return {}
+        t_finalize = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
+
+        return {
+            "t_start": t_start,
+            "t_stop": t_stop,
+            "t_finalize": t_finalize,
+        }
 
     async def detect_crossings(
         self,

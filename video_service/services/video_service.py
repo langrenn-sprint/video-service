@@ -1,10 +1,12 @@
 """Module for video services."""
 
+import asyncio
 import datetime
 import logging
 from pathlib import Path
 
 import cv2
+import numpy as np
 from ultralytics import YOLO
 from ultralytics.engine.results import Results
 
@@ -48,7 +50,6 @@ class VideoService:
         """
         informasjon = ""
         video_stream_url = await ConfigAdapter().get_config(token, event["id"], "VIDEO_URL")
-        video_clip_fps = await ConfigAdapter().get_config_int(token, event["id"], "VIDEO_CLIP_FPS")
         video_file_path = PhotosFileAdapter().get_raw_capture_folder_path()
 
         clip_duration = await ConfigAdapter().get_config_int(
@@ -65,7 +66,6 @@ class VideoService:
         height = int(video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
         image_size = (width, height)
         frame_rate = int(video_capture.get(cv2.CAP_PROP_FPS))  # Get the frame rate of the video
-        frame_interval = max(1, round(frame_rate / video_clip_fps))
         frames_per_clip = frame_rate * clip_duration  # Calculate the number of frames for a 15-second clip
         clip_count = 0
         error_count = 0
@@ -74,31 +74,29 @@ class VideoService:
             token,
             event,
             status_type,
-            f"Initiating video capture. Input FPS {frame_rate}, output FPS: {video_clip_fps}.",
+            f"Initiating video capture. Input FPS {frame_rate}.",
         )
 
-        try:
-            while True:
-                clip_count += 1
-                captured = self.capture_video_clip(
-                    video_capture,
-                    video_file_path,
-                    video_clip_fps,
-                    image_size,
-                    frame_interval,
-                    frames_per_clip,
-                    clip_count,
-                )
-                if captured:
-                    logging.info("Successfully captured clip with timing %s", captured)
-                else:
-                    error_count += 1
+        video_settings = {
+            "video_file_path": video_file_path,
+            "frame_rate": frame_rate,
+            "image_size": image_size,
+            "frames_per_clip": frames_per_clip,
+        }
 
-                continue_tracking = await ConfigAdapter().get_config_bool(
-                    token, event["id"], "CAPTURE_VIDEO_SERVICE_START"
-                )
-                if not continue_tracking:
-                    break  # No more frames to process
+        try:
+            clip_count, error_count = await self.capture_video_clip(
+                token,
+                event,
+                video_capture,
+                video_settings,
+            )
+            await StatusAdapter().create_status(
+                token,
+                event,
+                status_type,
+                f"Captured {clip_count} clips.",
+            )
 
         finally:
             video_capture.release()
@@ -116,86 +114,124 @@ class VideoService:
         )
         return informasjon
 
-    def capture_video_clip(
+    async def capture_video_clip(
         self,
+        token: str,
+        event: dict,
         video_capture: cv2.VideoCapture,
-        video_file_path: str,
-        video_clip_fps: int,
-        image_size: tuple,
-        frame_interval: int,
-        frames_per_clip: int,
-        clip_count: int,
-    ) -> dict:
+        video_settings: dict,
+    ) -> tuple:
         """Capture a video clip from the video stream.
 
         Args:
+            token: To update databes
+            event: Event details
             video_capture: OpenCV VideoCapture object.
-            video_file_path: Path to save the video clip.
-            video_clip_fps: Frames per second for the video clip.
-            image_size: Size of the video frames.
-            frame_interval: Interval between frames to capture.
-            frames_per_clip: Total number of frames in the clip.
-            clip_count: Current clip count.
+            video_settings: dict, video settings from config.
 
         Returns:
-            dict: A dictionary containing timestamp for start, stop, and finalize of recording.
+            tuple: A tuple containing number of clips captured and errors encountered.
 
         """
         clip_frames = []
-        frame_idx = 0
-        consecutive_errors = 0
+        clip_count = 0
+        error_count = 0
+        max_errors = 10
+        consecutive_error_count = 0
         max_consecutive_errors = 10
-        t_start = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
+        background_tasks = []  # Keep track of background write tasks
 
-        for frame_idx in range(frames_per_clip):
-            ret, frame = video_capture.read()
-            if not ret:
-                    consecutive_errors += 1
-                    if consecutive_errors >= max_consecutive_errors:
-                        logging.warning("Too many consecutive read errors, ending clip early")
-                        break
-                    continue  # Skip this frame and try next
-            consecutive_errors = 0  # Reset on successful read
+        while True:
+            t_start = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
 
-            if frame_idx % frame_interval == 0:
-                clip_frames.append(frame)
+            for _ in range(video_settings["frames_per_clip"]):
+                ret, frame = video_capture.read()
+                if ret:
+                    clip_frames.append(frame)
+                    consecutive_error_count = 0
+                else:
+                    consecutive_error_count += 1
+                if consecutive_error_count >= max_consecutive_errors:
+                    logging.error("Maximum consecutive error count reached: %d", consecutive_error_count)
+                    error_count += 1
+                    break
 
-        t_stop = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
+            t_stop = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
 
-        if clip_frames:
-            # Save the clip to a file
-            base = Path(video_file_path)
-            tmp_path = base / f"TMP_CAPTURED_{t_start}_{clip_count}.mp4"
-            final_path = base / f"CAPTURED_{t_start}_{clip_count}.mp4"
-            clip_count += 1
+            if clip_frames:
+                # Save the clip to a file
+                base = Path(video_settings["video_file_path"])
+                tmp_path = base / f"TMP_CAPTURED_{t_start}_{clip_count}.mp4"
+                final_path = base / f"CAPTURED_{t_start}_{clip_count}.mp4"
 
-            # Define the codec and create a VideoWriter object
-            fourcc = cv2.VideoWriter.fourcc(*"mp4v")
-            out = cv2.VideoWriter(str(tmp_path), fourcc, video_clip_fps, image_size)
+                # Deep copy frames to avoid mutations
+                frames_copy = [frame.copy() for frame in clip_frames]
 
-            if not out.isOpened():
-                out.release()
-                logging.exception("VideoWriter failed to open for %s", str(tmp_path))
-                return {}
+                # Spin off write task without waiting
+                task = asyncio.create_task(
+                    self.write_frames_async(frames_copy, video_settings, tmp_path, final_path)
+                )
+                background_tasks.append(task)
 
-            try:
-                for frame in clip_frames:
-                    out.write(frame)
-            finally:
-                out.release()
+                # Clear clip_frames for next iteration
+                clip_frames_count = len(clip_frames)
+                clip_frames = []
+                clip_count += 1
 
-            try:
-                tmp_path.replace(final_path)
-            except Exception:
-                logging.exception("Failed to rename %s to %s", tmp_path, final_path)
-                return {}
-        t_finalize = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
+                capture_timing = {
+                    "t_start": t_start,
+                    "t_stop": t_stop,
+                    "t_finalize": datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S"),
+                }
+                logging.info("Captured clip %d with %d frames and timing: %s", clip_count, clip_frames_count, capture_timing)
 
-        return {
-            "t_start": t_start,
-            "t_stop": t_stop,
-            "t_finalize": t_finalize,
-        }
+            continue_tracking = await ConfigAdapter().get_config_bool(
+                token, event["id"], "CAPTURE_VIDEO_SERVICE_START"
+            )
+            if not continue_tracking:
+                break  # No more frames to process
+            if error_count >= max_errors:
+                logging.error("Maximum error count reached: %d", error_count)
+                break
+
+        # Wait for all background write tasks to complete before returning
+        if background_tasks:
+            logging.info("Waiting for %d background write tasks to complete", len(background_tasks))
+            await asyncio.gather(*background_tasks, return_exceptions=True)
+
+
+        return (clip_count, error_count)
+
+    async def write_frames_async(
+        self,
+        frames: list[np.ndarray],
+        video_settings: dict,
+        tmp_path: Path,
+        final_path: Path
+    ) -> None:
+        """Write frames to video writer asynchronously."""
+        # Define the codec and create a VideoWriter object
+        fourcc = cv2.VideoWriter.fourcc(*"mp4v")
+        writer = cv2.VideoWriter(
+            str(tmp_path),
+            fourcc,
+            video_settings["frame_rate"],
+            video_settings["image_size"]
+        )
+        if not writer.isOpened():
+            writer.release()
+            informasjon = f"VideoWriter failed to open: {tmp_path}"
+            raise RuntimeError(informasjon)
+
+        try:
+            for frame in frames:
+                writer.write(frame)
+        finally:
+            writer.release()
+        try:
+            tmp_path.replace(final_path)
+        except Exception:
+            logging.exception("Failed to rename %s to %s", tmp_path, final_path)
 
     async def detect_crossings(
         self,
@@ -291,7 +327,7 @@ class VideoService:
         url_list = []
         for frame_number, result in enumerate(results, start=1):
             detections = VisionAIService().process_boxes(
-                event["id"], result, video_settings["trigger_line"], crossings, video_settings["camera_location"], frame_number, video_settings["fps"], video_settings["min_confidence"]
+                event["id"], result, video_settings["trigger_line"], crossings, video_settings["camera_location"], frame_number, video_settings["min_confidence"]
             )
             if detections:
                 url_list.extend(detections)
@@ -317,7 +353,6 @@ class VideoService:
         video_settings["camera_location"] = await ConfigAdapter().get_config(
             token, event["id"], "CAMERA_LOCATION"
         )
-        video_settings["fps"] = await ConfigAdapter().get_config_int(token, event["id"], "VIDEO_CLIP_FPS")
 
         video_settings["yolo_model_name"] = await ConfigAdapter().get_config(
             token, event["id"], "YOLO_MODEL_NAME"

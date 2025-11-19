@@ -100,7 +100,7 @@ class VisionAIService:
             raise Exception(informasjon)
         return trigger_line_xyxy_list
 
-    def process_boxes(self, event_id: str, result: Results, trigger_line: list, crossings: dict, camera_location: str, frame_number: int, fps: int, min_confidence: float) -> list:
+    def process_boxes(self, event_id: str, result: Results, trigger_line: list, crossings: dict, camera_location: str, frame_number: int, min_confidence: float) -> list:
         """Process result from video analytics."""
         detect_url_list = []
         boxes = result.boxes
@@ -137,7 +137,6 @@ class VisionAIService:
                                     crossings,
                                     xyxy,
                                     frame_number,
-                                    fps,
                                     box_confidence,
                                 )
                                 detect_url_list.append(url)
@@ -202,12 +201,11 @@ class VisionAIService:
         crossings: dict,
         xyxy: Tensor,
         frame_number: int,
-        fps: int,
         box_confidence: float
     ) -> str:
         """Save image and crop_images to file."""
         logging.info(f"Line crossing! ID:{d_id}")
-        taken_time = extract_datetime_from_filename(result.path, frame_number, fps)
+        taken_time = extract_datetime_from_filename(result.path, frame_number, result.fps)
         time_text = taken_time.strftime("%Y%m%d %H:%M:%S")
 
         # save image to file - full size

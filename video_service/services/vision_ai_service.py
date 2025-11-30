@@ -65,7 +65,13 @@ class VisionAIService:
         if not success:
             information = "Failed to encode crop image for upload."
             raise Exception(information)
-        url = GoogleCloudStorageAdapter().upload_blob_bytes(event_id, "DETECT", f"{file_name}_crop.jpg", encoded_image.tobytes(), "image/jpeg", {})
+
+        metadata = {
+            "crop_count": len(image_list),
+            "image_type": "detection_crop",
+            "detection_file_name": file_name
+        }
+        url = GoogleCloudStorageAdapter().upload_blob_bytes(event_id, "DETECT", f"{file_name}_crop.jpg", encoded_image.tobytes(), "image/jpeg", metadata)
         logging.info(f"Image uploaded to: {url}")
 
     def create_image_info(self, camera_location: str, time_text: str, box_confidence: float, frame_number: int, video_file_name: str) -> dict:
@@ -76,7 +82,8 @@ class VisionAIService:
             "passeringstid": time_text,
             "sannsynlighet": box_confidence,
             "source_video": video_file_name,
-            "sekvensnummer": frame_number
+            "sekvensnummer": frame_number,
+            "image_type": "detection"
         }
 
     async def get_trigger_line_xyxy_list(self, token: str, event: dict) -> list:
@@ -205,7 +212,7 @@ class VisionAIService:
     ) -> str:
         """Save image and crop_images to file."""
         logging.info(f"Line crossing! ID:{d_id}")
-        taken_time = extract_datetime_from_filename(result.path, frame_number, result.fps)
+        taken_time = extract_datetime_from_filename(result.path, frame_number)
         time_text = taken_time.strftime("%Y%m%d %H:%M:%S")
 
         # save image to file - full size
@@ -312,7 +319,12 @@ class VisionAIService:
             if not success:
                 information = "Failed to encode image for upload."
                 raise Exception(information)
-            url = GoogleCloudStorageAdapter().upload_blob_bytes(event["id"], "TRIGGER_LINE", file_name, encoded_image.tobytes(), "image/jpeg", {})
+            metadata = {
+                "trigger_line_coordinates": str(trigger_line_xyxyn),
+                "image_type": "trigger_line",
+                "image_time": time_text
+            }
+            url = GoogleCloudStorageAdapter().upload_blob_bytes(event["id"], "TRIGGER_LINE", file_name, encoded_image.tobytes(), "image/jpeg", metadata)
             logging.info(f"Image uploaded to: {url}")
 
             informasjon = f"Trigger line <a title={file_name}>photo</a> created."
@@ -328,14 +340,14 @@ class VisionAIService:
             logging.debug(f"TypeError: {e}")
             # ignore
 
-def extract_datetime_from_filename(filename: str, frame_number: int, fps: int) -> datetime.datetime:
+def extract_datetime_from_filename(filename: str, frame_number: int) -> datetime.datetime:
     """Extract a datetime object from a file path with pattern YYYYMMDD and HHMMSS."""
     match = re.search(r"(\d{8}_\d{6})", filename)
     if match:
         date_str = match.group(1)
         try:
             taken_time = datetime.datetime.strptime(date_str, "%Y%m%d_%H%M%S").astimezone()
-            return taken_time + datetime.timedelta(seconds=frame_number // fps)
+            return taken_time + datetime.timedelta(seconds=frame_number // 25)
         except ValueError:
             logging.exception(f"Invalid date format in filename: {filename}")
     return datetime.datetime.now(datetime.UTC)

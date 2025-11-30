@@ -74,10 +74,28 @@ class VisionAIService:
         url = GoogleCloudStorageAdapter().upload_blob_bytes(event_id, "DETECT", f"{file_name}_crop.jpg", encoded_image.tobytes(), "image/jpeg", metadata)
         logging.info(f"Image uploaded to: {url}")
 
-    def create_image_info(self, camera_location: str, time_text: str, box_confidence: float, frame_number: int, video_file_name: str) -> dict:
+    def create_image_info(
+        self,
+        event_id: str,
+        camera_location: str,
+        box_confidence: float,
+        frame_number: int,
+        video_file_name: str,
+        taken_time: datetime.datetime,
+        d_id: int,
+    ) -> dict:
         """Create image info EXIF data."""
+        time_text = taken_time.strftime("%Y%m%d %H:%M:%S")
+
+        # save image to file - full size
+        timestamp = taken_time.strftime("%Y%m%d_%H%M%S")
+        file_name = f"{camera_location}_{timestamp}_{frame_number}_{d_id}"
+
         # set the params
         return {
+            "event_id": event_id,
+            "d_id": d_id,
+            "filnavn": file_name,
             "passeringspunkt": camera_location,
             "passeringstid": time_text,
             "sannsynlighet": box_confidence,
@@ -136,15 +154,15 @@ class VisionAIService:
                                     )
                             elif d_id not in crossings[crossed_line]:
                                 crossings[crossed_line].append(d_id)
+                                taken_time = extract_datetime_from_filename(result.path, frame_number)
+                                metadata = VisionAIService().create_image_info(
+                                    event_id, camera_location, box_confidence, frame_number, result.path, taken_time, d_id
+                                )
                                 url = VisionAIService().save_detect_image(
-                                    event_id,
                                     result,
-                                    camera_location,
-                                    d_id,
                                     crossings,
                                     xyxy,
-                                    frame_number,
-                                    box_confidence,
+                                    metadata,
                                 )
                                 detect_url_list.append(url)
 
@@ -201,48 +219,37 @@ class VisionAIService:
 
     def save_detect_image(
         self,
-        event_id: str,
         result: Results,
-        camera_location: str,
-        d_id: int,
         crossings: dict,
         xyxy: Tensor,
-        frame_number: int,
-        box_confidence: float
+        metadata: dict
     ) -> str:
         """Save image and crop_images to file."""
-        logging.info(f"Line crossing! ID:{d_id}")
-        taken_time = extract_datetime_from_filename(result.path, frame_number)
-        time_text = taken_time.strftime("%Y%m%d %H:%M:%S")
-
-        # save image to file - full size
-        timestamp = taken_time.strftime("%Y%m%d_%H%M%S")
-        file_name = f"{camera_location}_{timestamp}_{frame_number}_{d_id}"
-        metadata = VisionAIService().create_image_info(camera_location, time_text, box_confidence, frame_number, result.path)
+        logging.info(f"Line crossing! ID:{metadata['d_id']}")
 
         # Save the original image to Google Cloud Storage
         success, encoded_image = cv2.imencode(".jpg", result.orig_img)
         if not success:
             information = "Failed to encode image for upload."
             raise Exception(information)
-        url = GoogleCloudStorageAdapter().upload_blob_bytes(event_id, "DETECT", f"{file_name}.jpg", encoded_image.tobytes(), "image/jpeg", metadata)
+        url = GoogleCloudStorageAdapter().upload_blob_bytes(metadata["event_id"], "DETECT", f"{metadata['filnavn']}.jpg", encoded_image.tobytes(), "image/jpeg", metadata)
         logging.debug(f"Image uploaded to: {url}")
 
         # save crop images
         crop_im_list = []
-        if d_id in crossings["80"]:
-            crop_im_list.append(crossings["80"][d_id])
-            crossings["80"].pop(d_id)
-        if d_id in crossings["90"]:
-            crop_im_list.append(crossings["90"][d_id])
-            crossings["90"].pop(d_id)
+        if metadata["d_id"] in crossings["80"]:
+            crop_im_list.append(crossings["80"][metadata["d_id"]])
+            crossings["80"].pop(metadata["d_id"])
+        if metadata["d_id"] in crossings["90"]:
+            crop_im_list.append(crossings["90"][metadata["d_id"]])
+            crossings["90"].pop(metadata["d_id"])
         # add crop of saved image (100)
         crop_im_list.append(VisionAIService().get_crop_image(result.orig_img, xyxy))
 
         VisionAIService().save_crop_images(
-            event_id,
+            metadata["event_id"],
             crop_im_list,
-            file_name,
+            metadata["filnavn"],
         )
         return url
 

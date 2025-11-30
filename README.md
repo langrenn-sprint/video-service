@@ -24,9 +24,25 @@ Then install the dependencies:
 
 ```Zsh
 % uv sync
+
 ```
-Activate virtual env:
+### If required - virtual environment
+```Zsh
+curl https://pyenv.run | bash
+python -m venv .venv
+pyenv install 3.13
 source .venv/bin/activate
+```
+
+### Start service in virtual env:
+```Zsh
+set -a
+source .env
+set +a
+python -m video_service.app
+Dependencies (services & db):
+docker compose up event-service user-service photo-service mongodb
+```
 
 ### Install
 
@@ -64,17 +80,6 @@ To run tests with logging, do (/home/heming/Nedlastinger/20250525_GKOpp1.mp4):
 
 ```Zsh
 % uv run pytest -m integration -- --log-cli-level=DEBUG
-```
-
-### Start service
-```Zsh
-source .venv/bin/activate
-set -a
-source .env
-set +a
-python -m video_service.app
-Dependencies (services & db):
-docker compose up event-service user-service photo-service mongodb
 ```
 
 ## slette images og containere

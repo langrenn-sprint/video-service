@@ -1,5 +1,6 @@
 """Module for config adapter."""
 
+import ast
 import copy
 import json
 import logging
@@ -43,7 +44,12 @@ class ConfigAdapter:
                 # config not found - find default value
                 config_file = Path(f"{PROJECT_ROOT}/config/global_settings.json")
                 with config_file.open() as json_file:
-                    settings = json.load(json_file)
+                    try:
+                        settings = json.load(json_file)
+                    except json.JSONDecodeError as e:
+                        informasjon = f"Error decoding JSON from config file {config_file}: {e}"
+                        logging.exception(informasjon)
+                        raise web.HTTPBadRequest(reason=informasjon) from e
                     if key in settings:
                         value = settings[key]
                         # create config
@@ -57,7 +63,7 @@ class ConfigAdapter:
                 informasjon = f"{servicename} failed - {resp.status} - {body['detail']}"
                 logging.error(informasjon)
                 raise web.HTTPBadRequest(reason=informasjon)
-        return config["value"]
+        return config["value"].strip()
 
     async def get_all_configs(self, token: str, event_id: str) -> list:
         """Get config by google id function."""
@@ -107,10 +113,21 @@ class ConfigAdapter:
     async def get_config_list(self, token: str, event_id: str, key: str) -> list:
         """Get config list value."""
         string_value = await self.get_config(token, event_id, key)
-        # convert from json string to list
-        return json.loads(string_value)
+        try:
+            # convert from json string to list
+            return json.loads(string_value)
+        except json.JSONDecodeError:
+            pass
+        # then try Python literal (handles "['a','b']")
+        try:
+            return ast.literal_eval(string_value)
+        except (ValueError, SyntaxError):
+            logging.exception(f"JSON for key '{key}', value '{string_value}'")
+            return []
 
-    async def get_config_img_res_tuple(self, token: str, event_id: str, key: str) -> tuple:
+    async def get_config_img_res_tuple(
+        self, token: str, event_id: str, key: str,
+    ) -> tuple:
         """Get config tuple value."""
         string_value = await self.get_config(token, event_id, key)
         try:
@@ -119,6 +136,8 @@ class ConfigAdapter:
             informasjon = f"Error - {key} is not a tuple."
             raise Exception(informasjon) from None
         return tuple_value
+        # convert from json string to list
+        return json.loads(string_value)
 
     async def create_config(
         self, token: str, event_id: str, key: str, value: str

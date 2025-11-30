@@ -1,7 +1,7 @@
 services:
   video-service:
     build: .
-    image: ghcr.io/langrenn-sprint/video-service:test
+    image: europe-north1-docker.pkg.dev/sigma-celerity-257719/docker-repository/video-service:test
     environment:
       - LOGGING_LEVEL=${LOGGING_LEVEL}
       - EVENTS_HOST_SERVER=event-service

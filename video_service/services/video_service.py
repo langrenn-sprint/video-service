@@ -232,6 +232,7 @@ class VideoService:
             tmp_path.replace(final_path)
         except Exception:
             logging.exception("Failed to rename %s to %s", tmp_path, final_path)
+        logging.info("Saved video clip to %s", final_path)
 
     async def detect_crossings(
         self,
@@ -267,7 +268,7 @@ class VideoService:
                             token, event["id"], "LATEST_DETECTED_PHOTO_URL", url_list[0]
                         )
                     archive_file = PhotosFileAdapter().move_to_capture_archive(event["id"], storage_mode, Path(video_stream_url["name"]).name)
-                    informasjon = f" Deteksjoner: <a href='{archive_file}'>video</a>, {len(url_list)} passeringer."
+                    informasjon = f" Deteksjon fra <a href='{archive_file}'>{Path(video_stream_url["name"]).name}</a>, {len(url_list)} passeringer."
                 except VideoStreamNotFoundError as e:
                     error_file = PhotosFileAdapter().move_to_error_archive(event["id"], storage_mode, Path(video_stream_url["name"]).name)
                     informasjon = f"Error processing stream from: {error_file} - details: {e!s}"

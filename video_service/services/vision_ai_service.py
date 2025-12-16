@@ -71,7 +71,7 @@ class VisionAIService:
             "image_type": "detection_crop",
             "detection_file_name": file_name
         }
-        url = GoogleCloudStorageAdapter().upload_blob_bytes(event_id, "DETECT", f"{file_name}_crop.jpg", encoded_image.tobytes(), "image/jpeg", metadata)
+        url = GoogleCloudStorageAdapter().upload_blob_bytes(event_id, "DETECT_CROP", f"{file_name}_crop.jpg", encoded_image.tobytes(), "image/jpeg", metadata)
         logging.info(f"Image uploaded to: {url}")
 
     def create_image_info(
@@ -81,10 +81,10 @@ class VisionAIService:
         box_confidence: float,
         frame_number: int,
         video_file_name: str,
-        taken_time: datetime.datetime,
         d_id: int,
     ) -> dict:
         """Create image info EXIF data."""
+        taken_time = extract_datetime_from_filename(video_file_name, frame_number)
         time_text = taken_time.strftime("%Y%m%d %H:%M:%S")
 
         # save image to file - full size
@@ -154,9 +154,8 @@ class VisionAIService:
                                     )
                             elif d_id not in crossings[crossed_line]:
                                 crossings[crossed_line].append(d_id)
-                                taken_time = extract_datetime_from_filename(result.path, frame_number)
                                 metadata = VisionAIService().create_image_info(
-                                    event_id, camera_location, box_confidence, frame_number, result.path, taken_time, d_id
+                                    event_id, camera_location, box_confidence, frame_number, result.path, d_id
                                 )
                                 url = VisionAIService().save_detect_image(
                                     result,

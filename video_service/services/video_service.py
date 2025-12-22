@@ -267,8 +267,8 @@ class VideoService:
                         await ConfigAdapter().update_config(
                             token, event["id"], "LATEST_DETECTED_PHOTO_URL", url_list[0]
                         )
-                    archive_file = PhotosFileAdapter().move_to_capture_archive(event["id"], storage_mode, Path(video_stream_url["name"]).name)
-                    informasjon = f" Deteksjon fra <a href='{archive_file}'>{Path(video_stream_url["name"]).name}</a>, {len(url_list)} passeringer."
+                    PhotosFileAdapter().move_to_capture_archive(event["id"], storage_mode, Path(video_stream_url["name"]).name)
+                    informasjon = f" Video <a href='{video_stream_url["url"]}'>{Path(video_stream_url["name"]).name}</a>, {len(url_list)} passeringer."
                 except VideoStreamNotFoundError as e:
                     error_file = PhotosFileAdapter().move_to_error_archive(event["id"], storage_mode, Path(video_stream_url["name"]).name)
                     informasjon = f"Error processing stream from: {error_file} - details: {e!s}"

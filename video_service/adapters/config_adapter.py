@@ -2,6 +2,7 @@
 
 import ast
 import copy
+from dotenv import load_dotenv
 import json
 import logging
 import os
@@ -11,6 +12,8 @@ from pathlib import Path
 from aiohttp import ClientSession, hdrs, web
 from multidict import MultiDict
 
+# get base settings
+load_dotenv()
 PHOTOS_HOST_SERVER = os.getenv("PHOTOS_HOST_SERVER", "localhost")
 PHOTOS_HOST_PORT = os.getenv("PHOTOS_HOST_PORT", "8092")
 PHOTO_SERVICE_URL = f"http://{PHOTOS_HOST_SERVER}:{PHOTOS_HOST_PORT}"

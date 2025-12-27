@@ -2,7 +2,6 @@
 
 import ast
 import copy
-from dotenv import load_dotenv
 import json
 import logging
 import os
@@ -10,6 +9,7 @@ from http import HTTPStatus
 from pathlib import Path
 
 from aiohttp import ClientSession, hdrs, web
+from dotenv import load_dotenv
 from multidict import MultiDict
 
 # get base settings

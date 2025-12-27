@@ -1,12 +1,12 @@
 """Module for status adapter."""
 
 import copy
-from dotenv import load_dotenv
 import logging
 import os
 from http import HTTPStatus
 
 from aiohttp import ClientSession, hdrs, web
+from dotenv import load_dotenv
 from multidict import MultiDict
 
 from video_service.adapters.events_adapter import EventsAdapter

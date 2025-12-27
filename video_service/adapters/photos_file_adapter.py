@@ -59,12 +59,14 @@ class PhotosFileAdapter:
             logging.exception("Error getting photos")
         return photos
 
-    def get_all_capture_files(self, event_id: str, storage_mode: str) ->  list[dict]:
+    def get_capture_files(self, event_id: str, storage_mode: str) ->  list[dict]:
         """Get all url to all captured files on file directory."""
         file_list = []
         try:
             if storage_mode == "cloud_storage":
                 file_list = GoogleCloudStorageAdapter().list_blobs(event_id, "CAPTURE/")
+                # Filter out .lock files from cloud storage
+                file_list = [f for f in file_list if not f["name"].endswith(".lock")]
             else:
                 # Local file system
                 files = list(Path(CAPTURED_FILE_PATH).iterdir())

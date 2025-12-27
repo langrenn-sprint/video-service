@@ -1,11 +1,11 @@
 """Module for user adapter."""
 
-from dotenv import load_dotenv
 import logging
 import os
 from http import HTTPStatus
 
 from aiohttp import ClientSession, hdrs
+from dotenv import load_dotenv
 from multidict import MultiDict
 
 # get base settings

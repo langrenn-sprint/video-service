@@ -1,10 +1,11 @@
 """Module for application looking at video and detecting line crossings."""
 
 import asyncio
-from dotenv import load_dotenv
 import logging
 import os
 from logging.handlers import RotatingFileHandler
+
+from dotenv import load_dotenv
 
 from video_service.adapters import (
     ConfigAdapter,
@@ -89,16 +90,12 @@ async def main() -> None:
                 token, event, status_type, f"Critical Error - exiting program: {err_string}"
             )
     except asyncio.CancelledError:
-        await ConfigAdapter().update_config(
-            token, event["id"], f"{MODE}_VIDEO_SERVICE_AVAILABLE", "False"
-        )
-        await ConfigAdapter().update_config(
-            token, event["id"], f"{MODE}_VIDEO_SERVICE_RUNNING", "False"
-        )
         await StatusAdapter().create_status(
             token, event, status_type, f"video-service {MODE} was cancelled (ctrl-c pressed)."
         )
-        raise
+    await ConfigAdapter().update_config(
+        token, event["id"], f"{MODE}_VIDEO_SERVICE_RUNNING", "False"
+    )
     await ConfigAdapter().update_config(
         token, event["id"], f"{MODE}_VIDEO_SERVICE_AVAILABLE", "False"
     )

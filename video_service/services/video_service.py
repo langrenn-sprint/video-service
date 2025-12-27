@@ -3,6 +3,7 @@
 import asyncio
 import datetime
 import logging
+import os
 from pathlib import Path
 
 import cv2
@@ -12,6 +13,7 @@ from ultralytics.engine.results import Results
 
 from video_service.adapters import (
     ConfigAdapter,
+    GCSLockAdapter,
     PhotosFileAdapter,
     StatusAdapter,
     VideoStreamNotFoundError,
@@ -254,13 +256,22 @@ class VideoService:
 
         """
         # Open the video stream for captured video clips
-        video_urls = PhotosFileAdapter().get_all_capture_files(event["id"], storage_mode)
+        video_urls = PhotosFileAdapter().get_capture_files(event["id"], storage_mode)
+
         if video_urls:
             await ConfigAdapter().update_config(
                 token, event["id"], "DETECT_VIDEO_SERVICE_RUNNING", "True"
             )
             video_settings = await self.get_video_settings(token, event)
             for video_stream_url in video_urls:
+                # lock video file - only on cloud storage mode
+                instance_id = f"instance-{os.getpid()}"
+                if storage_mode == "cloud_storage":
+                    file_locked = GCSLockAdapter().try_acquire_lock(video_stream_url["name"], instance_id)
+                    if not file_locked:
+                        logging.info("Video file is locked by another instance, skipping: %s", video_stream_url["name"])
+                        continue  # Skip processing this file
+
                 try:
                     url_list = self.detect_crossings_with_ultraltyics(event, video_stream_url["url"], video_settings)
                     if url_list:
@@ -273,6 +284,10 @@ class VideoService:
                     error_file = PhotosFileAdapter().move_to_error_archive(event["id"], storage_mode, Path(video_stream_url["name"]).name)
                     informasjon = f"Error processing stream from: {error_file} - details: {e!s}"
                     logging.exception(informasjon)
+                finally:
+                    # Always release lock
+                    if storage_mode == "cloud_storage":
+                        GCSLockAdapter().release_lock(video_stream_url["name"])
                 await StatusAdapter().create_status(
                     token, event, "VIDEO_ANALYTICS", informasjon
                 )

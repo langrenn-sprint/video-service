@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import socket
 from logging.handlers import RotatingFileHandler
 
 from dotenv import load_dotenv
@@ -10,7 +11,6 @@ from dotenv import load_dotenv
 from video_service.adapters import (
     ConfigAdapter,
     EventsAdapter,
-    PhotosFileAdapter,
     StatusAdapter,
     UserAdapter,
 )
@@ -39,7 +39,8 @@ file_handler.setFormatter(formatter)
 logging.getLogger().addHandler(file_handler)
 
 MODE = os.getenv("MODE", "DUMMY")
-PhotosFileAdapter().init_video_folders()
+# Generate from hostname and PID
+instance_name = f"video-service-{socket.gethostname()}-{os.getpid()}"
 
 async def main() -> None:
     """CLI for analysing video stream."""
@@ -57,7 +58,7 @@ async def main() -> None:
                 raise Exception(informasjon)
 
             information = (
-                f"video-service is ready, mode {MODE}! - {event['name']}, {event['date_of_event']}"
+                f"{instance_name} is ready, mode {MODE}! - {event['name']}, {event['date_of_event']}"
             )
             status_type = await ConfigAdapter().get_config(
                 token, event["id"], "VIDEO_SERVICE_STATUS_TYPE"
@@ -65,22 +66,22 @@ async def main() -> None:
             await StatusAdapter().create_status(
                 token, event, status_type, information
             )
-            # service ready!
-            await ConfigAdapter().update_config(
-                token, event["id"], f"{MODE}_VIDEO_SERVICE_AVAILABLE", "True"
-            )
 
             i = 0
             while True:
                 if i > STATUS_INTERVAL:
-                    informasjon = f"video-service er klar, mode {MODE}."
+                    informasjon = f"{instance_name} er klar, mode {MODE}."
                     await StatusAdapter().create_status(
                         token, event, status_type, informasjon
                     )
                     i = 0
                 else:
                     i += 1
-                await run_the_video_service(token, event, status_type)
+                await run_the_video_service(token, event, status_type, instance_name)
+                # service ready!
+                await ConfigAdapter().update_config(
+                    token, event["id"], f"{MODE}_VIDEO_SERVICE_AVAILABLE", "True"
+                )
                 await asyncio.sleep(5)
 
         except Exception as e:
@@ -91,7 +92,7 @@ async def main() -> None:
             )
     except asyncio.CancelledError:
         await StatusAdapter().create_status(
-            token, event, status_type, f"video-service {MODE} was cancelled (ctrl-c pressed)."
+            token, event, status_type, f"{instance_name} was cancelled (ctrl-c pressed)."
         )
     await ConfigAdapter().update_config(
         token, event["id"], f"{MODE}_VIDEO_SERVICE_RUNNING", "False"
@@ -102,7 +103,7 @@ async def main() -> None:
     logging.info("Goodbye!")
 
 
-async def run_the_video_service(token: str, event: dict, status_type: str) -> None:
+async def run_the_video_service(token: str, event: dict, status_type: str, instance_name: str) -> None:
     """Run the service."""
     video_config = {}
     video_config = await get_config(token, event["id"], MODE)
@@ -135,7 +136,7 @@ async def run_the_video_service(token: str, event: dict, status_type: str) -> No
             token,
             event,
             status_type,
-            f"Error in video-service: {err_string}",
+            f"Error in {instance_name}: {err_string}",
         )
         await ConfigAdapter().update_config(
             token, event["id"], f"{MODE}_VIDEO_SERVICE_RUNNING", "False"

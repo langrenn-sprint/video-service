@@ -33,6 +33,7 @@ class VideoService:
         token: str,
         event: dict,
         status_type: str,
+        instance_name: str,
     ) -> str:
         """Capture video from a stream, save the video to a file, each clip 15 seconsds long.
 
@@ -42,6 +43,7 @@ class VideoService:
             token: To update databes
             event: Event details
             status_type: To update status messages
+            instance_name: Name of the instance running the service
 
         Returns:
             A string indicating the status of the video analytics.
@@ -76,7 +78,7 @@ class VideoService:
             token,
             event,
             status_type,
-            f"Initiating video capture. Input FPS {frame_rate}.",
+            f"{instance_name}: Initiating video capture. Input FPS {frame_rate}.",
         )
 
         video_settings = {
@@ -97,7 +99,7 @@ class VideoService:
                 token,
                 event,
                 status_type,
-                f"Captured {clip_count} clips.",
+                f"{instance_name}: Captured {clip_count} clips.",
             )
 
         finally:
@@ -107,7 +109,7 @@ class VideoService:
             )
 
         # Update status and return result
-        informasjon = f"Video capture completed: {clip_count} clips saved, {error_count} errors."
+        informasjon = f"{instance_name}: {clip_count} clips saved, {error_count} errors."
         await StatusAdapter().create_status(
             token,
             event,
@@ -236,27 +238,25 @@ class VideoService:
             logging.exception("Failed to rename %s to %s", tmp_path, final_path)
         logging.info("Saved video clip to %s", final_path)
 
-    async def detect_crossings(
+    async def detect_crossings_local_storage(
         self,
         token: str,
         event: dict,
-        storage_mode: str,
     ) -> str:
-        """Detect crossing video from detected video clips.
+        """Detect crossing video from detected video clips - local storage.
 
         Screenshots with crossings are taken. The video archived.
 
         Args:
             token: To update database
             event: Event details
-            storage_mode: Storage mode for the video clips
 
         Returns:
             A string indicating the status of the video analytics.
 
         """
         # Open the video stream for captured video clips
-        video_urls = PhotosFileAdapter().get_capture_files(event["id"], storage_mode)
+        video_urls = PhotosFileAdapter().get_capture_files(event["id"], "local_storage")
 
         if video_urls:
             await ConfigAdapter().update_config(
@@ -264,39 +264,94 @@ class VideoService:
             )
             video_settings = await self.get_video_settings(token, event)
             for video_stream_url in video_urls:
-                # lock video file - only on cloud storage mode
-                instance_id = f"instance-{os.getpid()}"
-                if storage_mode == "cloud_storage":
-                    file_locked = GCSLockAdapter().try_acquire_lock(video_stream_url["name"], instance_id)
-                    if not file_locked:
-                        logging.info("Video file is locked by another instance, skipping: %s", video_stream_url["name"])
-                        continue  # Skip processing this file
-
                 try:
                     url_list = self.detect_crossings_with_ultraltyics(event, video_stream_url["url"], video_settings)
                     if url_list:
                         await ConfigAdapter().update_config(
                             token, event["id"], "LATEST_DETECTED_PHOTO_URL", url_list[0]
                         )
-                    PhotosFileAdapter().move_to_capture_archive(event["id"], storage_mode, Path(video_stream_url["name"]).name)
+                    PhotosFileAdapter().move_to_capture_archive(event["id"], "local_storage", Path(video_stream_url["name"]).name)
                     informasjon = f" Video <a href='{video_stream_url["url"]}'>{Path(video_stream_url["name"]).name}</a>, {len(url_list)} passeringer."
                 except VideoStreamNotFoundError as e:
-                    error_file = PhotosFileAdapter().move_to_error_archive(event["id"], storage_mode, Path(video_stream_url["name"]).name)
+                    error_file = PhotosFileAdapter().move_to_error_archive(event["id"], "local_storage", Path(video_stream_url["name"]).name)
                     informasjon = f"Error processing stream from: {error_file} - details: {e!s}"
                     logging.exception(informasjon)
-                finally:
-                    # Always release lock
-                    if storage_mode == "cloud_storage":
-                        GCSLockAdapter().release_lock(video_stream_url["name"])
                 await StatusAdapter().create_status(
                     token, event, "VIDEO_ANALYTICS", informasjon
                 )
 
             # Update status and return result
             await ConfigAdapter().update_config(
-                token, event["id"], "DETECT_VIDEO_SERVICE_RUNNING", "false"
+                token, event["id"], "DETECT_VIDEO_SERVICE_RUNNING", "False"
             )
         return f"Crossings detection completed, processed {len(video_urls)} videos."
+
+    async def detect_crossings_cloud_storage(
+        self,
+        token: str,
+        event: dict,
+        instance_name: str,
+    ) -> str:
+        """Detect crossing video from detected video clips. Storage mode is cloud storage.
+
+        Screenshots with crossings are taken. The video archived.
+
+        Args:
+            token: To update database
+            event: Event details
+            storage_mode: Storage mode for the video clips
+            instance_name: Name of the service instance.
+
+        Returns:
+            A string indicating the status of the video analytics.
+
+        """
+        video_count = 0
+        await ConfigAdapter().update_config(
+            token, event["id"], "DETECT_VIDEO_SERVICE_RUNNING", "True"
+        )
+
+        while True:
+            # Open the video stream for captured video clips
+            video_url = PhotosFileAdapter().get_unlocked_capture_file(event["id"])
+
+            if video_url:
+                video_count += 1
+                video_settings = await self.get_video_settings(token, event)
+                # lock video file - only on cloud storage mode
+                instance_id = f"instance-{os.getpid()}"
+                file_locked = GCSLockAdapter().try_acquire_lock(video_url["name"], instance_id)
+                if not file_locked:
+                    logging.info("Video file is locked by another instance, skipping: %s", video_url["name"])
+                    continue  # Skip processing this file
+
+                try:
+                    url_list = self.detect_crossings_with_ultraltyics(event, video_url["url"], video_settings)
+                    if url_list:
+                        await ConfigAdapter().update_config(
+                            token, event["id"], "LATEST_DETECTED_PHOTO_URL", url_list[0]
+                        )
+                    PhotosFileAdapter().move_to_capture_archive(event["id"], "cloud_storage", Path(video_url["name"]).name)
+                    informasjon = f" {instance_name}: {Path(video_url["name"]).name}, {len(url_list)} passeringer."
+                except VideoStreamNotFoundError as e:
+                    error_file = PhotosFileAdapter().move_to_error_archive(event["id"], "cloud_storage", Path(video_url["name"]).name)
+                    informasjon = f"{instance_name}: Error processing stream from: {error_file} - details: {e!s}"
+                    logging.exception(informasjon)
+                finally:
+                    # Always release lock
+                    GCSLockAdapter().release_lock(video_url["name"])
+                await StatusAdapter().create_status(
+                    token, event, "VIDEO_ANALYTICS", informasjon
+                )
+            else:
+                # No more videos to process
+                break
+
+        # Update status and return result
+        await ConfigAdapter().update_config(
+            token, event["id"], "DETECT_VIDEO_SERVICE_RUNNING", "False"
+        )
+        return f"Crossings detection completed, processed {video_count} videos."
 
     def detect_crossings_with_ultraltyics(
         self,

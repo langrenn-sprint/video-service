@@ -116,10 +116,13 @@ async def run_the_video_service(token: str, event: dict, status_type: str, insta
             if MODE == "CAPTURE":
                 await VisionAIService().print_photo_with_trigger_line(token, event, status_type)
                 await VideoService().capture_video(
-                    token, event, status_type
+                    token, event, status_type, instance_name
                 )
             elif MODE == "DETECT":
-                await VideoService().detect_crossings(token, event, storage_mode)
+                if storage_mode == "cloud_storage":
+                    await VideoService().detect_crossings_cloud_storage(token, event, instance_name)
+                else:
+                    await VideoService().detect_crossings_local_storage(token, event)
         elif video_config["video_running"]:
             # should be invalid (no muliti thread) - reset
             await ConfigAdapter().update_config(

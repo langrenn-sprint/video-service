@@ -82,6 +82,23 @@ class PhotosFileAdapter:
         else:
             return file_list
 
+    def get_unlocked_capture_file(self, event_id: str) ->  dict:
+        """Get first unlocked capture file from cloud storage."""
+        try:
+            file_list = GoogleCloudStorageAdapter().list_blobs(event_id, "CAPTURE/")
+            if file_list:
+                for capture_file in file_list:
+                    if not capture_file["name"].endswith(".lock"):
+                        for lock_file in file_list:
+                            if lock_file["name"] == f"{capture_file['name']}.lock":
+                                break
+                        else:
+                            return capture_file
+        except Exception:
+            informasjon = "Error getting captured files"
+            logging.exception(informasjon)
+        return {}
+
     def get_all_raw_capture_files(self, event_id: str, storage_mode: str) ->  list[dict]:
         """Get all url to all raw captured files on file directory."""
         file_list = []

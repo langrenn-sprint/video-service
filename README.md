@@ -41,7 +41,7 @@ source .env
 set +a
 python -m video_service.app
 Dependencies (services & db):
-docker compose up event-service user-service photo-service mongodb
+docker compose up integration-service race-service competition-format-service photo-service user-service event-service mongodb photo-service-gui
 ```
 
 ### Install
@@ -60,7 +60,6 @@ PHOTOS_HOST_SERVER=localhost
 PHOTOS_HOST_PORT=8092
 USERS_HOST_SERVER=localhost
 USERS_HOST_PORT=8086
-GOOGLE_APPLICATION_CREDENTIALS=/home/hh/github/secrets/application_default_credentials.json
 GOOGLE_CLOUD_PROJECT=sigma-celerity-257719
 GOOGLE_STORAGE_BUCKET=langrenn-sprint
 GOOGLE_STORAGE_SERVER=https://storage.googleapis.com

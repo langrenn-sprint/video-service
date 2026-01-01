@@ -56,7 +56,7 @@ class GoogleCloudStorageAdapter:
             metadata: dict,
         ) -> str:
         """Upload a byte object to the bucket, return URL to uploaded file."""
-        servicename = "GoogleCloudStorageAdapter.upload_blob"
+        servicename = "GoogleCloudStorageAdapter.upload_blob_bytes"
 
         storage_client = storage.Client()
         bucket = storage_client.bucket(GOOGLE_STORAGE_BUCKET)
@@ -114,11 +114,11 @@ class GoogleCloudStorageAdapter:
 
     def move_to_capture_archive(self, event_id: str, filename: str) -> str:
         """Move photo to local archive."""
-        destination_file = ""
+        destination_file = f"{event_id}/CAPTURE_ARCHIVE/{filename}"
         try:
             self.move_blob(
                 f"{event_id}/CAPTURE/{filename}",
-                f"{event_id}/CAPTURE_ARCHIVE/{filename}",
+                destination_file,
             )
         except Exception:
             logging.exception("Error moving photo to archive.")
@@ -126,7 +126,7 @@ class GoogleCloudStorageAdapter:
 
     def list_blobs(self, event_id: str, prefix: str) -> list[dict]:
         """List all blobs in the bucket that begin with the prefix."""
-        servicename = "GoogleCloudStorageAdapter.get_blobs"
+        servicename = "GoogleCloudStorageAdapter.list_blobs"
         storage_client = storage.Client()
         bucket = storage_client.bucket(GOOGLE_STORAGE_BUCKET)
 

@@ -74,11 +74,20 @@ class VideoService:
         clip_count = 0
         error_count = 0
         # Update status and return result
+        details = {
+            "instance_name": instance_name,
+            "video_stream_url": video_stream_url,
+            "video_file_path": video_file_path,
+            "frame_rate": frame_rate,
+            "image_size": image_size,
+            "frames_per_clip": frames_per_clip
+        }
         await StatusAdapter().create_status(
             token,
             event,
             status_type,
-            f"{instance_name}: Initiating video capture. Input FPS {frame_rate}.",
+            f"{instance_name}: Initiating video capture.",
+            details,
         )
 
         video_settings = {
@@ -95,12 +104,6 @@ class VideoService:
                 video_capture,
                 video_settings,
             )
-            await StatusAdapter().create_status(
-                token,
-                event,
-                status_type,
-                f"{instance_name}: Captured {clip_count} clips.",
-            )
 
         finally:
             video_capture.release()
@@ -109,12 +112,17 @@ class VideoService:
             )
 
         # Update status and return result
-        informasjon = f"{instance_name}: {clip_count} clips saved, {error_count} errors."
+        informasjon = f"{clip_count} clips saved, {error_count} errors."
         await StatusAdapter().create_status(
             token,
             event,
             status_type,
             informasjon,
+            {
+                "instance_name": instance_name,
+                "clip_count": clip_count,
+                "video_settings": video_settings
+            },
         )
         return informasjon
 
@@ -242,6 +250,7 @@ class VideoService:
         self,
         token: str,
         event: dict,
+        status_type: str,
     ) -> str:
         """Detect crossing video from detected video clips - local storage.
 
@@ -250,6 +259,7 @@ class VideoService:
         Args:
             token: To update database
             event: Event details
+            status_type: To update status messages
 
         Returns:
             A string indicating the status of the video analytics.
@@ -271,13 +281,22 @@ class VideoService:
                             token, event["id"], "LATEST_DETECTED_PHOTO_URL", url_list[0]
                         )
                     PhotosFileAdapter().move_to_capture_archive(event["id"], "local_storage", Path(video_stream_url["name"]).name)
-                    informasjon = f" Video <a href='{video_stream_url["url"]}'>{Path(video_stream_url["name"]).name}</a>, {len(url_list)} passeringer."
+                    informasjon = f"{len(url_list)} passeringer."
+                    details = {
+                        "video_url": video_stream_url["url"],
+                        "passeringer": url_list,
+                    }
                 except VideoStreamNotFoundError as e:
                     error_file = PhotosFileAdapter().move_to_error_archive(event["id"], "local_storage", Path(video_stream_url["name"]).name)
-                    informasjon = f"Error processing stream from: {error_file} - details: {e!s}"
+                    informasjon = "Error processing stream."
+                    details = {
+                        "instance_name": "local_storage",
+                        "error_file": error_file,
+                        "exception": str(e),
+                    }
                     logging.exception(informasjon)
                 await StatusAdapter().create_status(
-                    token, event, "VIDEO_ANALYTICS", informasjon
+                    token, event, status_type, informasjon, details
                 )
 
             # Update status and return result
@@ -291,6 +310,7 @@ class VideoService:
         token: str,
         event: dict,
         instance_name: str,
+        status_type: str,
     ) -> str:
         """Detect crossing video from detected video clips. Storage mode is cloud storage.
 
@@ -301,6 +321,7 @@ class VideoService:
             event: Event details
             storage_mode: Storage mode for the video clips
             instance_name: Name of the service instance.
+            status_type: To update status messages
 
         Returns:
             A string indicating the status of the video analytics.
@@ -332,16 +353,25 @@ class VideoService:
                             token, event["id"], "LATEST_DETECTED_PHOTO_URL", url_list[0]
                         )
                     PhotosFileAdapter().move_to_capture_archive(event["id"], "cloud_storage", Path(video_url["name"]).name)
-                    informasjon = f" {instance_name}: {Path(video_url["name"]).name}, {len(url_list)} passeringer."
+                    details = {
+                        "video_url": video_url["url"],
+                        "passeringer": url_list,
+                    }
+                    informasjon = f" {len(url_list)} passeringer."
                 except VideoStreamNotFoundError as e:
                     error_file = PhotosFileAdapter().move_to_error_archive(event["id"], "cloud_storage", Path(video_url["name"]).name)
                     informasjon = f"{instance_name}: Error processing stream from: {error_file} - details: {e!s}"
                     logging.exception(informasjon)
+                    details = {
+                        "instance_name": instance_name,
+                        "error_file": error_file,
+                        "exception": str(e),
+                    }
                 finally:
                     # Always release lock
                     GCSLockAdapter().release_lock(video_url["name"])
                 await StatusAdapter().create_status(
-                    token, event, "VIDEO_ANALYTICS", informasjon
+                    token, event, status_type, informasjon, details
                 )
             else:
                 # No more videos to process

@@ -40,7 +40,11 @@ logging.getLogger().addHandler(file_handler)
 
 MODE = os.getenv("MODE", "DUMMY")
 # Generate from hostname and PID
-instance_name = f"video-service-{socket.gethostname()}-{os.getpid()}"
+instance_name = ""
+if os.getenv("K_REVISION"):
+    instance_name = str(os.getenv("K_REVISION"))
+else:
+    instance_name = f"{socket.gethostname()}"
 
 async def main() -> None:
     """CLI for analysing video stream."""
@@ -62,9 +66,9 @@ async def main() -> None:
             )
             status_type = await ConfigAdapter().get_config(
                 token, event["id"], "VIDEO_SERVICE_STATUS_TYPE"
-            )
+            ) + f"_{MODE}"
             await StatusAdapter().create_status(
-                token, event, status_type, information
+                token, event, status_type, information, {}
             )
 
             i = 0
@@ -72,7 +76,7 @@ async def main() -> None:
                 if i > STATUS_INTERVAL:
                     informasjon = f"{instance_name} er klar, mode {MODE}."
                     await StatusAdapter().create_status(
-                        token, event, status_type, informasjon
+                        token, event, status_type, informasjon, {}
                     )
                     i = 0
                 else:
@@ -88,11 +92,11 @@ async def main() -> None:
             err_string = str(e)
             logging.exception(err_string)
             await StatusAdapter().create_status(
-                token, event, status_type, f"Critical Error - exiting program: {err_string}"
+                token, event, status_type, f"Critical Error - exiting program: {err_string}", {}
             )
     except asyncio.CancelledError:
         await StatusAdapter().create_status(
-            token, event, status_type, f"{instance_name} was cancelled (ctrl-c pressed)."
+            token, event, status_type, f"{instance_name} was cancelled (ctrl-c pressed).", {}
         )
     await ConfigAdapter().update_config(
         token, event["id"], f"{MODE}_VIDEO_SERVICE_RUNNING", "False"
@@ -120,9 +124,9 @@ async def run_the_video_service(token: str, event: dict, status_type: str, insta
                 )
             elif MODE == "DETECT":
                 if storage_mode == "cloud_storage":
-                    await VideoService().detect_crossings_cloud_storage(token, event, instance_name)
+                    await VideoService().detect_crossings_cloud_storage(token, event, instance_name, status_type)
                 else:
-                    await VideoService().detect_crossings_local_storage(token, event)
+                    await VideoService().detect_crossings_local_storage(token, event, status_type)
         elif video_config["video_running"]:
             # should be invalid (no muliti thread) - reset
             await ConfigAdapter().update_config(
@@ -140,6 +144,7 @@ async def run_the_video_service(token: str, event: dict, status_type: str, insta
             event,
             status_type,
             f"Error in {instance_name}: {err_string}",
+            {},
         )
         await ConfigAdapter().update_config(
             token, event["id"], f"{MODE}_VIDEO_SERVICE_RUNNING", "False"

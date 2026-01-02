@@ -336,7 +336,7 @@ class VisionAIService:
             logging.info(f"Image uploaded to: {url}")
 
             informasjon = f"Trigger line <a title={file_name}>photo</a> created."
-            await StatusAdapter().create_status(token, event, status_type, informasjon)
+            await StatusAdapter().create_status(token, event, status_type, informasjon, {})
             await ConfigAdapter().update_config(
                 token, event["id"], "NEW_TRIGGER_LINE_PHOTO", "False"
             )

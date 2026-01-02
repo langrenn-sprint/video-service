@@ -22,6 +22,8 @@ COUNT_COORDINATES = 4
 DETECTION_BOX_MINIMUM_SIZE = 0.01
 DETECTION_BOX_MAXIMUM_SIZE = 0.9
 EDGE_MARGIN = 0.02
+# identify person - class value 0, birds - class value 14
+DETECT_OBJECTS = [0, 2, 14, 16]
 
 
 class VisionAIService:
@@ -136,8 +138,8 @@ class VisionAIService:
                 try:
 
                     d_id = int(boxes.id[y].item())  # type: ignore[attr-defined]
-                    # identify person - class value 0
-                    if (class_values[y] == 0):
+                    logging.info(f"Detection class value: {class_values[y]}")
+                    if (class_values[y] in DETECT_OBJECTS):
                         xyxyn = boxes.xyxyn[y]
                         crossed_line = self.is_below_line(
                             xyxyn, trigger_line

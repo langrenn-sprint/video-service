@@ -81,6 +81,11 @@ To run tests with logging, do (/home/heming/Nedlastinger/20250525_GKOpp1.mp4):
 % uv run pytest -m integration -- --log-cli-level=DEBUG
 ```
 
+## test - urls
+https://storage.googleapis.com/langrenn-sprint/photos/20240309_Ragde_lang.mp4
+http://10.0.0.27:8080/video
+
+
 ## slette images og containere
 
 ```Shell

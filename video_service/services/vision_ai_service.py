@@ -335,8 +335,8 @@ class VisionAIService:
             url = GoogleCloudStorageAdapter().upload_blob_bytes(event["id"], "TRIGGER_LINE", file_name, encoded_image.tobytes(), "image/jpeg", metadata)
             logging.info(f"Image uploaded to: {url}")
 
-            informasjon = f"Trigger line <a title={file_name}>photo</a> created."
-            await StatusAdapter().create_status(token, event, status_type, informasjon, {})
+            informasjon = "Trigger line photo created."
+            await StatusAdapter().create_status(token, event, status_type, informasjon, {"trigger_line_photo_url": url})
             await ConfigAdapter().update_config(
                 token, event["id"], "NEW_TRIGGER_LINE_PHOTO", "False"
             )

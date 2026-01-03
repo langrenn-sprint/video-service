@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import socket
+from http import HTTPStatus
 from logging.handlers import RotatingFileHandler
 
 from dotenv import load_dotenv
@@ -50,7 +51,7 @@ async def main() -> None:
     """CLI for analysing video stream."""
     token = ""
     event = {}
-    status_type = ""
+    status_type = f"{MODE}-"
     try:
         try:
             # login to data-source
@@ -62,37 +63,46 @@ async def main() -> None:
                 raise Exception(informasjon)
 
             information = (
-                f"{instance_name} is ready, mode {MODE}! - {event['name']}, {event['date_of_event']}"
+                f"{instance_name} is ready- {event['name']}"
             )
-            status_type = await ConfigAdapter().get_config(
+            status_type += await ConfigAdapter().get_config(
                 token, event["id"], "VIDEO_SERVICE_STATUS_TYPE"
             ) + f"_{MODE}"
             await StatusAdapter().create_status(
-                token, event, status_type, information, {}
+                token, event, status_type, information, event
             )
 
             i = 0
             while True:
-                if i > STATUS_INTERVAL:
-                    informasjon = f"{instance_name} er klar, mode {MODE}."
-                    await StatusAdapter().create_status(
-                        token, event, status_type, informasjon, {}
+                try:
+                    if i > STATUS_INTERVAL:
+                        informasjon = f"{instance_name} er klar."
+                        await StatusAdapter().create_status(
+                            token, event, status_type, informasjon, event
+                        )
+                        i = 0
+                    else:
+                        i += 1
+                    await run_the_video_service(token, event, status_type, instance_name)
+                    # service ready!
+                    await ConfigAdapter().update_config(
+                        token, event["id"], f"{MODE}_VIDEO_SERVICE_AVAILABLE", "True"
                     )
-                    i = 0
-                else:
-                    i += 1
-                await run_the_video_service(token, event, status_type, instance_name)
-                # service ready!
-                await ConfigAdapter().update_config(
-                    token, event["id"], f"{MODE}_VIDEO_SERVICE_AVAILABLE", "True"
-                )
+                except Exception as e:
+                    err_string = str(e)
+                    logging.exception(err_string)
+                    # try new login if token expired (401 error)
+                    if str(HTTPStatus.UNAUTHORIZED.value) in err_string:
+                        token = await do_login()
+                    else:
+                        raise Exception(err_string) from e
                 await asyncio.sleep(5)
 
         except Exception as e:
             err_string = str(e)
             logging.exception(err_string)
             await StatusAdapter().create_status(
-                token, event, status_type, f"Critical Error - exiting program: {err_string}", {}
+                token, event, status_type, "Critical Error - exiting program", {"error": err_string}
             )
     except asyncio.CancelledError:
         await StatusAdapter().create_status(
@@ -143,8 +153,8 @@ async def run_the_video_service(token: str, event: dict, status_type: str, insta
             token,
             event,
             status_type,
-            f"Error in {instance_name}: {err_string}",
-            {},
+            f"Error in {instance_name}. Stopping.",
+            {"error": err_string},
         )
         await ConfigAdapter().update_config(
             token, event["id"], f"{MODE}_VIDEO_SERVICE_RUNNING", "False"

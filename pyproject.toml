@@ -86,6 +86,7 @@ known-first-party = ["user_service"]
 venvPath = "." # rye installs the venv in the current dir
 venv = ".venv" #       in a folder called `.venv`
 #strict = ["**/*.py"] # use 'strict' checking on all files
+reportPrivateImportUsage = false  # ultralytics exports YOLO but pyright sees it as private
 
 [tool.deptry]
 ignore_notebooks = true

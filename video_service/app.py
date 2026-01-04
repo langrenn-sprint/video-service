@@ -51,7 +51,7 @@ async def main() -> None:
     """CLI for analysing video stream."""
     token = ""
     event = {}
-    status_type = f"{MODE}-"
+    status_type = ""
     try:
         try:
             # login to data-source
@@ -62,9 +62,7 @@ async def main() -> None:
                 informasjon = f"Invalid mode {MODE} - no video processing will be done."
                 raise Exception(informasjon)
 
-            information = (
-                f"{instance_name} is ready- {event['name']}"
-            )
+            information = (f"{instance_name} er klar.")
             status_type += await ConfigAdapter().get_config(
                 token, event["id"], "VIDEO_SERVICE_STATUS_TYPE"
             ) + f"_{MODE}"

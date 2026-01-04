@@ -22,8 +22,6 @@ COUNT_COORDINATES = 4
 DETECTION_BOX_MINIMUM_SIZE = 0.01
 DETECTION_BOX_MAXIMUM_SIZE = 0.9
 EDGE_MARGIN = 0.02
-# identify person - class value 0, birds - class value 14
-DETECT_OBJECTS = [0, 2, 14, 16]
 
 
 class VisionAIService:
@@ -138,34 +136,32 @@ class VisionAIService:
                 try:
 
                     d_id = int(boxes.id[y].item())  # type: ignore[attr-defined]
-                    logging.info(f"Detection class value: {class_values[y]}")
-                    if (class_values[y] in DETECT_OBJECTS):
-                        xyxyn = boxes.xyxyn[y]
-                        crossed_line = self.is_below_line(
-                            xyxyn, trigger_line
-                        )
-                        # ignore small boxes
-                        box_confidence = self.validate_box(xyxyn)
-                        if (crossed_line != "false") and box_confidence > min_confidence:
-                            # Extract screenshot image from the results
-                            xyxy = boxes.xyxy[y]
-                            if crossed_line != "100":
-                                if d_id not in crossings[crossed_line]:
-                                    crossings[crossed_line][d_id] = (
-                                        VisionAIService().get_crop_image(result.orig_img, xyxy)
-                                    )
-                            elif d_id not in crossings[crossed_line]:
-                                crossings[crossed_line].append(d_id)
-                                metadata = VisionAIService().create_image_info(
-                                    event_id, camera_location, box_confidence, frame_number, result.path, d_id
+                    xyxyn = boxes.xyxyn[y]
+                    crossed_line = self.is_below_line(
+                        xyxyn, trigger_line
+                    )
+                    # ignore small boxes
+                    box_confidence = self.validate_box(xyxyn)
+                    if (crossed_line != "false") and box_confidence > min_confidence:
+                        # Extract screenshot image from the results
+                        xyxy = boxes.xyxy[y]
+                        if crossed_line != "100":
+                            if d_id not in crossings[crossed_line]:
+                                crossings[crossed_line][d_id] = (
+                                    VisionAIService().get_crop_image(result.orig_img, xyxy)
                                 )
-                                url = VisionAIService().save_detect_image(
-                                    result,
-                                    crossings,
-                                    xyxy,
-                                    metadata,
-                                )
-                                detect_url_list.append(url)
+                        elif d_id not in crossings[crossed_line]:
+                            crossings[crossed_line].append(d_id)
+                            metadata = VisionAIService().create_image_info(
+                                event_id, camera_location, box_confidence, frame_number, result.path, d_id
+                            )
+                            url = VisionAIService().save_detect_image(
+                                result,
+                                crossings,
+                                xyxy,
+                                metadata,
+                            )
+                            detect_url_list.append(url)
 
                 except TypeError as e:
                     logging.debug(f"TypeError: {e}")

@@ -1,5 +1,6 @@
 """Service for managing Google Live Stream API operations."""
 
+import asyncio
 import logging
 import os
 from typing import Any
@@ -111,13 +112,15 @@ class LiveStreamService:
         try:
             # Create input endpoint
             logging.info("Creating input endpoint for event: %s", event_id)
-            input_resource = await self.adapter.create_input(
+            input_resource = await asyncio.to_thread(
+                self.adapter.create_input,
                 input_id=input_id,
             )
 
             # Create channel
             logging.info("Creating channel for event: %s", event_id)
-            await self.adapter.create_channel(
+            await asyncio.to_thread(
+                self.adapter.create_channel,
                 channel_id=channel_id,
                 input_id=input_id,
                 output_uri=output_uri,
@@ -126,7 +129,10 @@ class LiveStreamService:
 
             # Start channel
             logging.info("Starting channel for event: %s", event_id)
-            await self.adapter.start_channel(channel_id=channel_id)
+            await asyncio.to_thread(
+                self.adapter.start_channel,
+                channel_id=channel_id,
+            )
 
         except Exception:
             logging.exception(
@@ -167,7 +173,10 @@ class LiveStreamService:
         channel_id = f"{self.config.get_str('LIVESTREAM_CHANNEL_PREFIX', 'video-capture')}-{event_id}"
 
         logging.info("Stopping channel for event: %s", event_id)
-        await self.adapter.stop_channel(channel_id=channel_id)
+        await asyncio.to_thread(
+            self.adapter.stop_channel,
+            channel_id=channel_id,
+        )
         logging.info("Successfully stopped channel for event: %s", event_id)
 
     async def cleanup_resources(self, event_id: str) -> None:
@@ -187,19 +196,28 @@ class LiveStreamService:
 
             # Stop channel first if it's running
             try:
-                await self.adapter.stop_channel(channel_id=channel_id)
+                await asyncio.to_thread(
+                    self.adapter.stop_channel,
+                    channel_id=channel_id,
+                )
             except Exception:
                 logging.warning("Channel may already be stopped or not exist")
 
             # Delete channel
             try:
-                await self.adapter.delete_channel(channel_id=channel_id)
+                await asyncio.to_thread(
+                    self.adapter.delete_channel,
+                    channel_id=channel_id,
+                )
             except Exception:
                 logging.warning("Failed to delete channel: %s", channel_id)
 
             # Delete input
             try:
-                await self.adapter.delete_input(input_id=input_id)
+                await asyncio.to_thread(
+                    self.adapter.delete_input,
+                    input_id=input_id,
+                )
             except Exception:
                 logging.warning("Failed to delete input: %s", input_id)
 
@@ -221,7 +239,10 @@ class LiveStreamService:
         """
         channel_id = f"{self.config.get_str('LIVESTREAM_CHANNEL_PREFIX', 'video-capture')}-{event_id}"
 
-        channel = await self.adapter.get_channel(channel_id=channel_id)
+        channel = await asyncio.to_thread(
+            self.adapter.get_channel,
+            channel_id=channel_id,
+        )
 
         return {
             "channel_id": channel_id,
@@ -239,7 +260,7 @@ class LiveStreamService:
             List of dictionaries containing channel information
 
         """
-        channels = await self.adapter.list_channels()
+        channels = await asyncio.to_thread(self.adapter.list_channels)
 
         result = []
         for channel in channels:

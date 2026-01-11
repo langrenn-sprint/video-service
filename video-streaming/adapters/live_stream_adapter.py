@@ -5,7 +5,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from google.cloud import storage
 from google.cloud.video import live_stream_v1
 from google.cloud.video.live_stream_v1.types import (
     AudioStream,
@@ -16,7 +15,6 @@ from google.cloud.video.live_stream_v1.types import (
     MuxStream,
     Output,
     SegmentSettings,
-    SpriteSheet,
     VideoStream,
 )
 
@@ -37,7 +35,7 @@ class LiveStreamAdapter:
         self.client = live_stream_v1.LivestreamServiceClient()
         self.parent = f"projects/{project_id}/locations/{location}"
 
-    async def create_input(
+    def create_input(
         self,
         input_id: str,
     ) -> Input:
@@ -67,7 +65,7 @@ class LiveStreamAdapter:
 
         return response
 
-    async def create_channel(
+    def create_channel(
         self,
         channel_id: str,
         input_id: str,
@@ -165,7 +163,7 @@ class LiveStreamAdapter:
 
         return response
 
-    async def start_channel(self, channel_id: str) -> Channel:
+    def start_channel(self, channel_id: str) -> Channel:
         """Start a live stream channel.
 
         Args:
@@ -185,7 +183,7 @@ class LiveStreamAdapter:
 
         return response
 
-    async def stop_channel(self, channel_id: str) -> Channel:
+    def stop_channel(self, channel_id: str) -> Channel:
         """Stop a live stream channel.
 
         Args:
@@ -205,7 +203,7 @@ class LiveStreamAdapter:
 
         return response
 
-    async def delete_channel(self, channel_id: str) -> None:
+    def delete_channel(self, channel_id: str) -> None:
         """Delete a live stream channel.
 
         Args:
@@ -220,7 +218,7 @@ class LiveStreamAdapter:
         operation.result(timeout=600)
         logging.info("Deleted channel: %s", channel_name)
 
-    async def delete_input(self, input_id: str) -> None:
+    def delete_input(self, input_id: str) -> None:
         """Delete an input endpoint.
 
         Args:
@@ -235,7 +233,7 @@ class LiveStreamAdapter:
         operation.result(timeout=600)
         logging.info("Deleted input: %s", input_name)
 
-    async def get_channel(self, channel_id: str) -> Channel:
+    def get_channel(self, channel_id: str) -> Channel:
         """Get channel details.
 
         Args:
@@ -248,7 +246,7 @@ class LiveStreamAdapter:
         channel_name = f"{self.parent}/channels/{channel_id}"
         return self.client.get_channel(name=channel_name)
 
-    async def get_input(self, input_id: str) -> Input:
+    def get_input(self, input_id: str) -> Input:
         """Get input details.
 
         Args:
@@ -261,7 +259,7 @@ class LiveStreamAdapter:
         input_name = f"{self.parent}/inputs/{input_id}"
         return self.client.get_input(name=input_name)
 
-    async def list_channels(self) -> list[Channel]:
+    def list_channels(self) -> list[Channel]:
         """List all channels in the project.
 
         Returns:
@@ -275,7 +273,7 @@ class LiveStreamAdapter:
         page_result = self.client.list_channels(request=request)
         return list(page_result)
 
-    async def list_inputs(self) -> list[Input]:
+    def list_inputs(self) -> list[Input]:
         """List all inputs in the project.
 
         Returns:

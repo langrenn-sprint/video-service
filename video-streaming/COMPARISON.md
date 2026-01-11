@@ -104,52 +104,87 @@ This document compares two approaches to video capture for the video-service:
 - GCS storage: $0.020 per GB/month
 - Network egress: $0.12 per GB (first TB)
 
+**Cost per Hour:**
+- For dedicated compute: Fixed cost amortized over usage
+- Example: $157/month ÷ 730 hours/month = **$0.22/hour** (if running 24/7)
+- For event-based usage: Fixed cost remains constant regardless of hours used
+
 ### Google Live Stream API
 
 **Fixed Costs:**
 - None (pay-per-use)
 
 **Variable Costs:**
-- Live Stream API: $3.00 per stream hour (HD 720p)
+- Live Stream API: **$3.00 per stream hour** (HD 720p)
 - GCS storage: $0.020 per GB/month
 - Network ingress: Free
 - Network egress: $0.12 per GB (first TB)
 
-**Example Cost Calculation (24/7 streaming for 1 month):**
-- Stream hours: 24 × 30 = 720 hours
-- API cost: 720 × $3.00 = $2,160/month
-- Storage: ~500GB × $0.020 = $10/month
-- **Total: ~$2,170/month**
+**Cost per Hour:**
+- **$3.00/hour** for streaming
+- Storage cost: ~$0.20/hour (assuming ~10GB/hour × $0.020/GB/month ÷ 30 days)
+- **Total: ~$3.20/hour** (including storage)
 
-### Cost Comparison
+### Cost Comparison by Scenario
 
-| Scenario | Traditional | Live Stream API | Winner |
-|----------|-------------|-----------------|--------|
-| 24/7 continuous | $157 + storage | $2,170 + storage | Traditional |
-| 8 hours/day | $157 + storage | $720 + storage | Traditional |
-| 2 hours/day | $157 + storage | $180 + storage | API (marginal) |
-| Event-based (10h/month) | $157 + storage | $30 + storage | API |
+| Scenario | Traditional | Live Stream API | Winner | Notes |
+|----------|-------------|-----------------|--------|-------|
+| **10-hour event** | **$157** (fixed) | **$30** | **Live Stream API** | Typical event duration |
+| Single 10-hour event | $157 + $2 storage | $30 + $2 storage | **API ($32 vs $159)** | One event per month |
+| 5 events × 10h (50h/month) | $157 + $10 storage | $150 + $10 storage | **API ($160 vs $167)** | Multiple events |
+| 10 events × 10h (100h/month) | $157 + $20 storage | $300 + $20 storage | **Traditional ($177 vs $320)** | High frequency |
+| 24/7 continuous (730h) | $157 + $150 storage | $2,190 + $150 storage | **Traditional ($307 vs $2,340)** | Always-on monitoring |
+
+### Cost Per Hour Analysis
+
+**Break-even Point:**
+- Traditional: $157 fixed cost = 52 hours of Live Stream API ($3/hour)
+- Below 52 hours/month → Live Stream API is cheaper
+- Above 52 hours/month → Traditional is cheaper
+
+**For 10-Hour Events:**
+- **1 event/month**: Live Stream API saves $127 (81% savings)
+- **5 events/month** (50 hours): Live Stream API saves $7 (4% savings)
+- **6+ events/month**: Traditional becomes more cost-effective
+
+**Cost Summary:**
+```
+Traditional Python Capture:
+├─ Fixed: $157/month (regardless of usage)
+├─ Effective cost/hour: $157 ÷ hours_used
+└─ Best for: >52 hours/month or continuous operation
+
+Live Stream API:
+├─ Fixed: $0/month
+├─ Cost/hour: $3.00 (consistent rate)
+└─ Best for: <52 hours/month or sporadic events
+```
 
 ## When to Use Each Approach
 
 ### Use Traditional Python Capture When:
 
-1. **Continuous streaming** (24/7 or many hours per day)
-2. **Custom processing required** (watermarks, overlays, transformations)
-3. **Frame-by-frame analysis** needed during capture
-4. **Cost optimization** for high-volume scenarios
+1. **High-frequency events** (>52 hours/month or 6+ events of 10 hours)
+2. **Continuous streaming** (24/7 or many hours per day)
+3. **Custom processing required** (watermarks, overlays, transformations)
+4. **Frame-by-frame analysis** needed during capture
 5. **Full control** over video encoding parameters
 6. **Existing infrastructure** already in place
 
 ### Use Google Live Stream API When:
 
-1. **Event-based streaming** (sporadic, short duration)
-2. **No custom processing** required during capture
-3. **Minimal infrastructure** preferred (serverless)
-4. **Rapid deployment** needed
-5. **Cloud-native architecture** desired
-6. **Automatic failover** and reliability critical
-7. **Low maintenance** overhead preferred
+1. **Typical event-based streaming** (1-5 events of ~10 hours per month)
+2. **Sporadic or infrequent events** (<52 hours/month total)
+3. **No custom processing** required during capture
+4. **Minimal infrastructure** preferred (serverless)
+5. **Rapid deployment** needed
+6. **Cloud-native architecture** desired
+7. **Automatic failover** and reliability critical
+8. **Low maintenance** overhead preferred
+
+**For 10-Hour Events:**
+- 1-5 events/month → **Use Live Stream API** (significant cost savings)
+- 6+ events/month → **Use Traditional** (fixed cost becomes more economical)
 
 ## Integration Scenarios
 
@@ -197,9 +232,24 @@ else:
 
 The choice between traditional Python capture and Google Live Stream API depends on your specific use case:
 
+### Cost-Based Decision (for 10-hour events):
+- **1-5 events/month** (10-50 hours): Live Stream API saves $7-127/month (4-81% savings)
+- **6+ events/month** (60+ hours): Traditional approach becomes more cost-effective
+- **Break-even point**: 52 hours/month (~5 events of 10 hours)
+
+### Feature-Based Decision:
+- **Custom processing needs**: Traditional approach provides more flexibility
+- **Minimal infrastructure/maintenance**: Live Stream API reduces operational overhead
 - **High-volume, continuous streaming**: Traditional approach is more cost-effective
 - **Event-based, sporadic streaming**: Live Stream API offers better ROI
-- **Custom processing needs**: Traditional approach provides more flexibility
-- **Minimal maintenance**: Live Stream API reduces operational overhead
+
+### Recommendation for Typical 10-Hour Events:
+If you run **1-5 events per month**, the **Live Stream API is recommended** due to:
+- Lower total cost ($30-160 vs $157-167)
+- No infrastructure maintenance
+- Pay only for actual usage
+- Automatic scaling and reliability
+
+If you run **6 or more events per month**, consider the **Traditional approach** as the fixed costs become more economical at higher usage levels.
 
 The video-streaming module provides a ready-to-use implementation of the Live Stream API approach, allowing you to evaluate it alongside the existing solution and choose the best fit for each event or use case.

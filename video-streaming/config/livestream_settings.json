@@ -1,7 +1,7 @@
 {
-    "GOOGLE_CLOUD_PROJECT": "sigma-celerity-257719",
+    "GOOGLE_CLOUD_PROJECT": "your-project-id",
     "GOOGLE_CLOUD_REGION": "europe-north1",
-    "GOOGLE_STORAGE_BUCKET": "langrenn-sprint",
+    "GOOGLE_STORAGE_BUCKET": "your-bucket-name",
     "VIDEO_CLIP_DURATION": 30,
     "SRT_PORT": 5000,
     "LIVESTREAM_CHANNEL_PREFIX": "video-capture",

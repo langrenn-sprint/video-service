@@ -313,7 +313,7 @@ class LiveStreamConfigAdapter:
                 self._config = json.load(f)
             logging.info("Loaded config from: %s", self.config_path)
         except FileNotFoundError:
-            logging.exception("Config file not found: %s", self.config_path)
+            logging.warning("Config file not found: %s, using empty config", self.config_path)
             self._config = {}
 
     def get(self, key: str, default: Any = None) -> Any:

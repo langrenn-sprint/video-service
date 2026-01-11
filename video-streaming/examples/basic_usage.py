@@ -52,14 +52,16 @@ async def main() -> None:
         print(f"  Segment Duration: {channel_info['segment_duration']}s")
 
         print("\n=== Start streaming to the SRT Push URL ===")
-        print(f"Use this command with FFmpeg:")
-        print(f"  ffmpeg -re -i input.mp4 -c copy -f mpegts '{channel_info['srt_push_url']}'")
+        print("Use this command with FFmpeg:")
+        print(
+            f"  ffmpeg -re -i input.mp4 -c copy -f mpegts '{channel_info['srt_push_url']}'"
+        )
 
         # Step 2: Monitor status
         print("\n=== Checking channel status ===")
         status = await service.get_channel_status(event_id=event_id)
         print(f"  Status: {status['state']}")
-        if status['streaming_error']:
+        if status["streaming_error"]:
             print(f"  Error: {status['streaming_error']}")
 
         # Step 3: List active channels

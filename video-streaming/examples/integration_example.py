@@ -47,8 +47,7 @@ class HybridVideoCapture:
         """
         if use_live_stream_api:
             return await self._capture_with_live_stream_api(event, clip_duration)
-        else:
-            return await self._capture_with_traditional(event, clip_duration)
+        return await self._capture_with_traditional(event, clip_duration)
 
     async def _capture_with_live_stream_api(
         self,
@@ -181,10 +180,10 @@ class HybridVideoCapture:
         """
         if self.live_stream_service is not None:
             try:
-                await self.live_stream_service.cleanup_resources(
-                    event_id=event["id"]
+                await self.live_stream_service.cleanup_resources(event_id=event["id"])
+                logging.info(
+                    "Cleaned up Live Stream resources for event: %s", event["id"]
                 )
-                logging.info("Cleaned up Live Stream resources for event: %s", event["id"])
             except Exception:
                 logging.exception("Failed to cleanup Live Stream resources")
 

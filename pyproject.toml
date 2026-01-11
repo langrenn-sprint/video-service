@@ -69,6 +69,7 @@ ignore = [
     "PLR0913",
     "SIM102",
     "TRY002",
+    "TRY300",
     "TRY301",
 ]
 [tool.ruff.lint.per-file-ignores]
@@ -77,6 +78,17 @@ ignore = [
     "S101", # asserts allowed in tests...
     #     "ARG",  # Unused function args -> fixtures nevertheless are functionally relevant...
     #     "FBT",  # Don't care about booleans as positional arguments in tests, e.g. via @pytest.mark.parametrize()
+]
+"video-streaming/examples/*.py" = [
+    "T201",     # print allowed in examples
+    "ERA001",   # commented code allowed in examples
+    "FBT001",   # boolean positional args allowed in examples
+    "FBT002",   # boolean default positional args allowed in examples
+    "ARG002",   # unused arguments allowed in examples
+    "D401",     # imperative mood not required in examples
+]
+"video-streaming/**/__init__.py" = [
+    "N999",     # module name with dashes is acceptable for this directory
 ]
 
 [tool.ruff.lint.isort]

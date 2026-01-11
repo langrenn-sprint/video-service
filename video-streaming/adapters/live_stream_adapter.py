@@ -40,13 +40,11 @@ class LiveStreamAdapter:
     async def create_input(
         self,
         input_id: str,
-        srt_port: int = 5000,
     ) -> Input:
         """Create an SRT push input endpoint.
 
         Args:
             input_id: Unique identifier for the input
-            srt_port: Port for SRT push (default: 5000)
 
         Returns:
             Created Input resource

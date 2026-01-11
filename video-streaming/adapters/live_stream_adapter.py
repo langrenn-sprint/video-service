@@ -71,6 +71,14 @@ class LiveStreamAdapter:
         input_id: str,
         output_uri: str,
         segment_duration: int = 30,
+        video_bitrate_bps: int = 2000000,
+        video_width: int = 1280,
+        video_height: int = 720,
+        video_fps: int = 30,
+        audio_codec: str = "aac",
+        audio_bitrate_bps: int = 128000,
+        audio_channels: int = 2,
+        audio_sample_rate: int = 48000,
     ) -> Channel:
         """Create a live stream channel.
 
@@ -79,6 +87,14 @@ class LiveStreamAdapter:
             input_id: ID of the input to attach
             output_uri: GCS URI for output (e.g., gs://bucket/path/)
             segment_duration: Duration of each segment in seconds
+            video_bitrate_bps: Video bitrate in bits per second
+            video_width: Video width in pixels
+            video_height: Video height in pixels
+            video_fps: Video frames per second
+            audio_codec: Audio codec (e.g., "aac")
+            audio_bitrate_bps: Audio bitrate in bits per second
+            audio_channels: Number of audio channels
+            audio_sample_rate: Audio sample rate in Hz
 
         Returns:
             Created Channel resource
@@ -89,20 +105,26 @@ class LiveStreamAdapter:
         # Configure video stream
         video_stream = VideoStream(
             h264=VideoStream.H264CodecSettings(
-                bitrate_bps=2000000,
-                frame_rate=30,
-                height_pixels=720,
-                width_pixels=1280,
+                bitrate_bps=video_bitrate_bps,
+                frame_rate=video_fps,
+                height_pixels=video_height,
+                width_pixels=video_width,
             )
         )
 
         # Configure audio stream
+        # Set channel layout based on number of channels
+        if audio_channels == 2:  # noqa: PLR2004, SIM108
+            channel_layout = ["fl", "fr"]  # Stereo: front left, front right
+        else:
+            channel_layout = ["fc"]  # Mono: front center
+
         audio_stream = AudioStream(
-            codec="aac",
-            bitrate_bps=128000,
-            channel_count=2,
-            channel_layout=["fl", "fr"],
-            sample_rate_hertz=48000,
+            codec=audio_codec,
+            bitrate_bps=audio_bitrate_bps,
+            channel_count=audio_channels,
+            channel_layout=channel_layout,
+            sample_rate_hertz=audio_sample_rate,
         )
 
         # Create elementary streams
@@ -313,7 +335,9 @@ class LiveStreamConfigAdapter:
                 self._config = json.load(f)
             logging.info("Loaded config from: %s", self.config_path)
         except FileNotFoundError:
-            logging.warning("Config file not found: %s, using empty config", self.config_path)
+            logging.warning(
+                "Config file not found: %s, using empty config", self.config_path
+            )
             self._config = {}
 
     def get(self, key: str, default: Any = None) -> Any:

@@ -125,6 +125,14 @@ class LiveStreamService:
                 input_id=input_id,
                 output_uri=output_uri,
                 segment_duration=clip_duration,
+                video_bitrate_bps=self.config.get_int("VIDEO_BITRATE_BPS", 2000000),
+                video_width=self.config.get_int("VIDEO_WIDTH", 1280),
+                video_height=self.config.get_int("VIDEO_HEIGHT", 720),
+                video_fps=self.config.get_int("VIDEO_FPS", 30),
+                audio_codec=self.config.get_str("AUDIO_CODEC", "aac"),
+                audio_bitrate_bps=self.config.get_int("AUDIO_BITRATE_BPS", 128000),
+                audio_channels=self.config.get_int("AUDIO_CHANNELS", 2),
+                audio_sample_rate=self.config.get_int("AUDIO_SAMPLE_RATE", 48000),
             )
 
             # Start channel

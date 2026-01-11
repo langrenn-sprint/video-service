@@ -12,6 +12,21 @@ valid storage modes (VIDEO_STORAGE_MODE):
 local_storage - pushing video to cloud bucket
 cloud_storage - pushing image detectsions to cloud bucket
 
+## Alternative: Google Live Stream API (video-streaming module)
+
+The `video-streaming/` directory contains an alternative solution for video capture using **Google Cloud Live Stream API**. This cloud-native approach captures video streams from SRT Push sources and stores them directly to cloud storage with configurable clip duration.
+
+**Key differences:**
+- **Traditional capture** (Python cv2): Local processing, then upload to cloud
+- **Live Stream API**: Direct cloud streaming, no local compute required
+
+**When to use Live Stream API:**
+- Event-based or sporadic streaming (lower cost for low usage)
+- Serverless/cloud-native architecture preferred
+- Minimal infrastructure maintenance desired
+
+See [video-streaming/README.md](video-streaming/README.md) for detailed documentation, [video-streaming/COMPARISON.md](video-streaming/COMPARISON.md) for feature comparison, and [video-streaming/SETUP.md](video-streaming/SETUP.md) for setup instructions.
+
 ## Requirement for development
 
 Install [uv](https://docs.astral.sh/uv/), e.g.:

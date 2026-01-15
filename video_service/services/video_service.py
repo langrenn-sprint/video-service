@@ -9,10 +9,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 from ultralytics import YOLO
-from ultralytics.engine.results import Results
 
 from video_service.adapters import (
     ConfigAdapter,
+    EventsAdapter,
     GCSLockAdapter,
     PhotosFileAdapter,
     StatusAdapter,
@@ -35,7 +35,7 @@ class VideoService:
         status_type: str,
         instance_name: str,
     ) -> str:
-        """Capture video from a stream, save the video to a file, each clip 15 seconsds long.
+        """Capture video from a stream, save the video to a file.
 
         The video is saved in the specified directory with a timestamp in the filename.
 
@@ -154,7 +154,7 @@ class VideoService:
         background_tasks = []  # Keep track of background write tasks
 
         while True:
-            t_start = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
+            t_start = EventsAdapter().get_local_datetime_now(event).strftime("%Y%m%d_%H%M%S")
 
             for _ in range(video_settings["frames_per_clip"]):
                 ret, frame = video_capture.read()
@@ -168,7 +168,7 @@ class VideoService:
                     error_count += 1
                     break
 
-            t_stop = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
+            t_stop = EventsAdapter().get_local_datetime_now(event).strftime("%Y%m%d_%H%M%S")
 
             if clip_frames:
                 # Save the clip to a file
@@ -193,7 +193,7 @@ class VideoService:
                 capture_timing = {
                     "t_start": t_start,
                     "t_stop": t_stop,
-                    "t_finalize": datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S"),
+                    "t_finalize": EventsAdapter().get_local_datetime_now(event).strftime("%Y%m%d_%H%M%S"),
                 }
                 logging.info("Captured clip %d with %d frames and timing: %s", clip_count, clip_frames_count, capture_timing)
 
@@ -275,7 +275,8 @@ class VideoService:
             video_settings = await self.get_video_settings(token, event)
             for video_stream_url in video_urls:
                 try:
-                    url_list = self.detect_crossings_with_ultraltyics(event, video_stream_url["url"], video_settings)
+                    video_settings["url"] = video_stream_url["url"]
+                    url_list = self.detect_crossings_with_ultraltyics(event, video_settings)
                     if url_list:
                         await ConfigAdapter().update_config(
                             token, event["id"], "LATEST_DETECTED_PHOTO_URL", url_list[0]
@@ -339,6 +340,7 @@ class VideoService:
             if video_url:
                 video_count += 1
                 video_settings = await self.get_video_settings(token, event)
+                video_settings["url"] = video_url["url"]
                 # lock video file - only on cloud storage mode
                 instance_id = f"instance-{os.getpid()}"
                 file_locked = GCSLockAdapter().try_acquire_lock(video_url["name"], instance_id)
@@ -347,7 +349,7 @@ class VideoService:
                     continue  # Skip processing this file
 
                 try:
-                    url_list = self.detect_crossings_with_ultraltyics(event, video_url["url"], video_settings)
+                    url_list = self.detect_crossings_with_ultraltyics(event, video_settings)
                     if url_list:
                         await ConfigAdapter().update_config(
                             token, event["id"], "LATEST_DETECTED_PHOTO_URL", url_list[0]
@@ -386,7 +388,6 @@ class VideoService:
     def detect_crossings_with_ultraltyics(
         self,
         event: dict,
-        video_stream_url: str,
         video_settings: dict,
     ) -> list:
         """Analyze video and capture screenshots of line crossings.
@@ -394,7 +395,6 @@ class VideoService:
         Args:
             token: To update databes
             event: Event details
-            video_stream_url: Url to the video stream to analyze.
             video_settings: Video settings from config.
 
         Returns:
@@ -413,7 +413,7 @@ class VideoService:
         # Perform tracking with the model
         try:
             results = model.track(
-                source=video_stream_url,
+                source=video_settings["url"],
                 conf=MIN_CONFIDENCE,
                 classes=DETECTION_CLASSES,
                 stream=True,
@@ -421,14 +421,14 @@ class VideoService:
                 persist=True
             )
         except Exception as e:
-            informasjon = f"Error opening video stream from: {video_stream_url}"
+            informasjon = f"Error opening video stream from: {video_settings['url']}"
             logging.exception(informasjon)
             raise VideoStreamNotFoundError(informasjon) from e
 
         url_list = []
         for frame_number, result in enumerate(results, start=1):
             detections = VisionAIService().process_boxes(
-                event["id"], result, video_settings["trigger_line"], crossings, video_settings["camera_location"], frame_number, video_settings["min_confidence"]
+                event["id"], result, video_settings, crossings, frame_number
             )
             if detections:
                 url_list.extend(detections)

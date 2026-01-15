@@ -77,7 +77,7 @@ class VisionAIService:
     def create_image_info(
         self,
         event_id: str,
-        camera_location: str,
+        video_settings: dict,
         box_confidence: float,
         frame_number: int,
         video_file_name: str,
@@ -89,17 +89,17 @@ class VisionAIService:
 
         # save image to file - full size
         timestamp = taken_time.strftime("%Y%m%d_%H%M%S")
-        file_name = f"{camera_location}_{timestamp}_{frame_number}_{d_id}"
+        file_name = f"{video_settings['camera_location']}_{timestamp}_{frame_number}_{d_id}"
 
         # set the params
         return {
             "event_id": event_id,
             "d_id": d_id,
             "filnavn": file_name,
-            "passeringspunkt": camera_location,
+            "passeringspunkt": video_settings["camera_location"],
             "passeringstid": time_text,
             "sannsynlighet": box_confidence,
-            "source_video": video_file_name,
+            "source_video": video_settings["url"],
             "sekvensnummer": frame_number,
             "image_type": "detection"
         }
@@ -125,7 +125,7 @@ class VisionAIService:
             raise Exception(informasjon)
         return trigger_line_xyxy_list
 
-    def process_boxes(self, event_id: str, result: Results, trigger_line: list, crossings: dict, camera_location: str, frame_number: int, min_confidence: float) -> list:
+    def process_boxes(self, event_id: str, result: Results, video_settings: dict, crossings: dict, frame_number: int) -> list:
         """Process result from video analytics."""
         detect_url_list = []
         boxes = result.boxes
@@ -138,11 +138,11 @@ class VisionAIService:
                     d_id = int(boxes.id[y].item())  # type: ignore[attr-defined]
                     xyxyn = boxes.xyxyn[y]
                     crossed_line = self.is_below_line(
-                        xyxyn, trigger_line
+                        xyxyn, video_settings["trigger_line"]
                     )
                     # ignore small boxes
                     box_confidence = self.validate_box(xyxyn)
-                    if (crossed_line != "false") and box_confidence > min_confidence:
+                    if (crossed_line != "false") and box_confidence > video_settings["min_confidence"]:
                         # Extract screenshot image from the results
                         xyxy = boxes.xyxy[y]
                         if crossed_line != "100":
@@ -153,7 +153,12 @@ class VisionAIService:
                         elif d_id not in crossings[crossed_line]:
                             crossings[crossed_line].append(d_id)
                             metadata = VisionAIService().create_image_info(
-                                event_id, camera_location, box_confidence, frame_number, result.path, d_id
+                                event_id,
+                                video_settings,
+                                box_confidence,
+                                frame_number,
+                                result.path,
+                                d_id
                             )
                             url = VisionAIService().save_detect_image(
                                 result,

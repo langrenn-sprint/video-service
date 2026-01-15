@@ -48,11 +48,7 @@ class EventsAdapter:
     def get_local_datetime_now(self, event: dict) -> datetime.datetime:
         """Return local datetime object, time zone adjusted from event info."""
         time_zone = event["timezone"]
-        if time_zone:
-            local_time_obj = datetime.datetime.now(ZoneInfo(time_zone))
-        else:
-            local_time_obj = datetime.datetime.now(datetime.UTC)
-        return local_time_obj
+        return datetime.datetime.now(ZoneInfo(time_zone)) if time_zone else datetime.datetime.now(datetime.UTC)
 
     def get_local_time(self, event: dict, time_format: str) -> str:
         """Return local time string, time zone adjusted from event info."""

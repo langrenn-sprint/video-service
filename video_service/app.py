@@ -17,6 +17,14 @@ from video_service.adapters import (
 )
 from video_service.services import VideoService, VisionAIService
 
+# Import video-streaming module for CAPTURE_SRT mode
+try:
+    from video_streaming.services import LiveStreamService
+    LIVESTREAM_AVAILABLE = True
+except ImportError:
+    LIVESTREAM_AVAILABLE = False
+    logging.warning("video-streaming module not available. CAPTURE_SRT mode will not work.")
+
 # get base settings
 load_dotenv()
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
@@ -58,7 +66,7 @@ async def main() -> None:
             token = await do_login()
             event = await get_event(token)
 
-            if MODE not in ["CAPTURE", "DETECT"]:
+            if MODE not in ["CAPTURE_LOCAL", "CAPTURE_SRT", "DETECT"]:
                 informasjon = f"Invalid mode {MODE} - no video processing will be done."
                 raise Exception(informasjon)
 
@@ -125,11 +133,13 @@ async def run_the_video_service(token: str, event: dict, status_type: str, insta
 
     try:
         if video_config["video_start"]:
-            if MODE == "CAPTURE":
+            if MODE == "CAPTURE_LOCAL":
                 await VisionAIService().print_photo_with_trigger_line(token, event, status_type)
                 await VideoService().capture_video(
                     token, event, status_type, instance_name
                 )
+            elif MODE == "CAPTURE_SRT":
+                await run_capture_srt(token, event, status_type, instance_name)
             elif MODE == "DETECT":
                 if storage_mode == "cloud_storage":
                     await VideoService().detect_crossings_cloud_storage(token, event, instance_name, status_type)
@@ -140,7 +150,7 @@ async def run_the_video_service(token: str, event: dict, status_type: str, insta
             await ConfigAdapter().update_config(
                 token, event["id"], f"{MODE}_VIDEO_SERVICE_RUNNING", "False"
             )
-        elif video_config["new_trigger_line_photo"] and MODE == "CAPTURE":
+        elif video_config["new_trigger_line_photo"] and MODE == "CAPTURE_LOCAL":
             # new trigger line photo - reset
             await VisionAIService().print_photo_with_trigger_line(token, event, status_type)
 
@@ -227,6 +237,119 @@ async def get_config(token: str, event_id: str, mode: str) -> dict:
         "video_start": video_start,
         "new_trigger_line_photo": new_trigger_line_photo,
     }
+
+
+async def run_capture_srt(token: str, event: dict, status_type: str, instance_name: str) -> None:
+    """Run SRT Push video capture using Google Live Stream API.
+    
+    This function creates a Live Stream API channel that waits for incoming SRT Push streams
+    and stores the video directly to cloud storage with configurable clip duration.
+    
+    Args:
+        token: Authentication token for database access
+        event: Event details including event ID
+        status_type: Status type for logging
+        instance_name: Name of the service instance
+        
+    Raises:
+        Exception: If video-streaming module is not available
+    """
+    if not LIVESTREAM_AVAILABLE:
+        error_msg = "video-streaming module not available. Install with: pip install google-cloud-video-live-stream"
+        logging.error(error_msg)
+        await StatusAdapter().create_status(
+            token, event, status_type, "CAPTURE_SRT requires video-streaming module", 
+            {"error": error_msg}
+        )
+        raise Exception(error_msg)
+    
+    # Get clip duration from config
+    clip_duration = await ConfigAdapter().get_config_int(
+        token, event["id"], "VIDEO_CLIP_DURATION"
+    )
+    
+    try:
+        # Initialize Live Stream service
+        service = LiveStreamService()
+        
+        # Create and start the channel
+        logging.info("Creating Live Stream API channel for event: %s", event["id"])
+        channel_info = await service.create_and_start_channel(
+            event_id=event["id"],
+            clip_duration=clip_duration,
+        )
+        
+        # Update status with SRT Push URL
+        srt_push_url = channel_info["srt_push_url"]
+        output_uri = channel_info["output_uri"]
+        
+        informasjon = f"SRT Push channel ready. Stream to: {srt_push_url}"
+        await StatusAdapter().create_status(
+            token,
+            event,
+            status_type,
+            informasjon,
+            {
+                "instance_name": instance_name,
+                "srt_push_url": srt_push_url,
+                "output_uri": output_uri,
+                "segment_duration": clip_duration,
+            },
+        )
+        
+        logging.info("Channel created. Waiting for SRT Push stream at: %s", srt_push_url)
+        logging.info("Video will be stored to: %s", output_uri)
+        
+        # Keep the channel running while VIDEO_SERVICE_START is True
+        while True:
+            continue_streaming = await ConfigAdapter().get_config_bool(
+                token, event["id"], "CAPTURE_SRT_VIDEO_SERVICE_START"
+            )
+            
+            if not continue_streaming:
+                logging.info("Stopping SRT capture for event: %s", event["id"])
+                break
+            
+            # Check channel status periodically
+            try:
+                status = await service.get_channel_status(event_id=event["id"])
+                logging.debug("Channel status: %s", status["state"])
+            except Exception as e:
+                logging.warning("Failed to get channel status: %s", e)
+            
+            await asyncio.sleep(10)
+        
+        # Stop and cleanup the channel
+        logging.info("Stopping Live Stream channel for event: %s", event["id"])
+        await service.stop_channel(event_id=event["id"])
+        
+        informasjon = "SRT Push channel stopped. Cleaning up resources."
+        await StatusAdapter().create_status(
+            token, event, status_type, informasjon, 
+            {"instance_name": instance_name}
+        )
+        
+        await service.cleanup_resources(event_id=event["id"])
+        
+        informasjon = f"SRT capture completed. Videos stored in: {output_uri}"
+        await StatusAdapter().create_status(
+            token, event, status_type, informasjon,
+            {"instance_name": instance_name, "output_uri": output_uri}
+        )
+        
+    except Exception as e:
+        err_string = str(e)
+        logging.exception("Error in SRT capture: %s", err_string)
+        
+        # Try to cleanup on error
+        try:
+            if LIVESTREAM_AVAILABLE:
+                service = LiveStreamService()
+                await service.cleanup_resources(event_id=event["id"])
+        except Exception:
+            logging.exception("Failed to cleanup Live Stream resources after error")
+        
+        raise
 
 
 if __name__ == "__main__":

@@ -1,0 +1,42 @@
+# Ruff configuration for video-streaming module
+
+[lint]
+select = ["ALL"]
+ignore = [
+    "ANN401",   # Any should be allowed
+    "ASYNC230",
+    "BLE001",
+    "D211",
+    "D213",
+    "COM812",
+    "D203",
+    "E501",
+    "EM102",
+    "F401",
+    "G004",
+    "ISC001",
+    "LOG015",
+    "PLR0913",
+    "SIM102",
+    "TRY002",
+    "TRY301",
+]
+
+[lint.per-file-ignores]
+"examples/*.py" = [
+    "T201",     # print allowed in examples
+    "ERA001",   # commented code allowed in examples
+    "FBT001",   # boolean positional args allowed in examples
+    "FBT002",   # boolean default positional args allowed in examples
+    "ARG002",   # unused arguments allowed in examples
+    "D401",     # imperative mood not required in examples
+]
+"__init__.py" = [
+    "N999",     # module name with dashes is acceptable for this use case
+]
+"adapters/__init__.py" = [
+    "N999",
+]
+"services/__init__.py" = [
+    "N999",
+]

@@ -23,7 +23,6 @@ from video_service.services.vision_ai_service import (
 )
 
 DETECTION_CLASSES = [0]  # person
-MIN_CONFIDENCE = 0.6
 
 class VideoService:
     """Class representing video service."""
@@ -276,7 +275,7 @@ class VideoService:
             for video_stream_url in video_urls:
                 try:
                     video_settings["url"] = video_stream_url["url"]
-                    url_list = self.detect_crossings_with_ultraltyics(event, video_settings)
+                    url_list = self.detect_crossings_with_ultralytics(event, video_settings)
                     if url_list:
                         await ConfigAdapter().update_config(
                             token, event["id"], "LATEST_DETECTED_PHOTO_URL", url_list[0]
@@ -349,7 +348,7 @@ class VideoService:
                     continue  # Skip processing this file
 
                 try:
-                    url_list = self.detect_crossings_with_ultraltyics(event, video_settings)
+                    url_list = self.detect_crossings_with_ultralytics(event, video_settings)
                     if url_list:
                         await ConfigAdapter().update_config(
                             token, event["id"], "LATEST_DETECTED_PHOTO_URL", url_list[0]
@@ -385,7 +384,7 @@ class VideoService:
         )
         return f"Crossings detection completed, processed {video_count} videos."
 
-    def detect_crossings_with_ultraltyics(
+    def detect_crossings_with_ultralytics(
         self,
         event: dict,
         video_settings: dict,
@@ -414,9 +413,10 @@ class VideoService:
         try:
             results = model.track(
                 source=video_settings["url"],
-                conf=MIN_CONFIDENCE,
+                conf=video_settings["min_confidence"],
                 classes=DETECTION_CLASSES,
                 stream=True,
+                show=video_settings.get("show", False),
                 imgsz=video_settings["image_size"],
                 persist=True
             )
@@ -469,4 +469,7 @@ class VideoService:
         video_settings["min_confidence"] = float(await ConfigAdapter().get_config(
             token, event["id"], "DETECTION_CONFIDENCE_THRESHOLD"
         ))
+        video_settings["show"] = await ConfigAdapter().get_config_bool(
+            token, event["id"], "DETECT_ANALYTICS_SHOW_VIDEO"
+        )
         return video_settings

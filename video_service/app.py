@@ -74,7 +74,7 @@ async def main() -> None:
             while True:
                 try:
                     if i > STATUS_INTERVAL:
-                        informasjon = f"{instance_name} er klar."
+                        informasjon = f"{instance_name} {MODE} er klar."
                         await StatusAdapter().create_status(
                             token, event, status_type, informasjon, event
                         )
@@ -131,10 +131,10 @@ async def run_the_video_service(token: str, event: dict, status_type: str, insta
                     token, event, status_type, instance_name
                 )
             elif MODE == "DETECT":
-                if storage_mode == "cloud_storage":
-                    await VideoService().detect_crossings_cloud_storage(token, event, instance_name, status_type)
-                else:
+                if storage_mode == "local_storage":
                     await VideoService().detect_crossings_local_storage(token, event, status_type)
+                else:
+                    await VideoService().detect_crossings_cloud_storage(token, event, instance_name, status_type)
         elif video_config["video_running"]:
             # should be invalid (no muliti thread) - reset
             await ConfigAdapter().update_config(

@@ -26,7 +26,7 @@ jobs:
           python-version-file: ".python-version"
 
       - name: Install the project
-        run: uv sync --all-extras --all-groups
+        run: uv sync --all-extras --group dev
 
       - name: Run linters, checks and tests
         run: |

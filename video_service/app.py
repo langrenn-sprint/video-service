@@ -182,8 +182,10 @@ async def get_event(token: str) -> dict:
     def raise_multiple_events_error(events_db: list) -> None:
         """Raise an exception for multiple events found."""
         information = (
-            f"Multiple events found. Please specify an EVENT_ID in .env: {events_db}"
+            "Multiple events found. Please specify an EVENT_ID in .env: "
         )
+        for _event in events_db:
+            information += f"\n *** {_event['name']}, {_event['date_of_event']} id: {_event['id']} "
         raise Exception(information)
 
     event = {}

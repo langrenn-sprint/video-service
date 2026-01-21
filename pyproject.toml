@@ -10,6 +10,7 @@ dependencies = [
     "aiohttp>=3.12.15",
     "certifi>=2025.8.3",
     "google-cloud-storage>=3.1.0",
+    "google-cloud-video-live-stream>=1.8.0",
     "multidict>=6.1.0",
     "opencv-python>=4.11.0.86",
     "ultralytics==8.3.204",
@@ -76,6 +77,17 @@ ignore = [
     "S101", # asserts allowed in tests...
     #     "ARG",  # Unused function args -> fixtures nevertheless are functionally relevant...
     #     "FBT",  # Don't care about booleans as positional arguments in tests, e.g. via @pytest.mark.parametrize()
+]
+"video-streaming/examples/*.py" = [
+    "T201",     # print allowed in examples
+    "ERA001",   # commented code allowed in examples
+    "FBT001",   # boolean positional args allowed in examples
+    "FBT002",   # boolean default positional args allowed in examples
+    "ARG002",   # unused arguments allowed in examples
+    "D401",     # imperative mood not required in examples
+]
+"video-streaming/**/__init__.py" = [
+    "N999",     # module name with dashes is acceptable for this directory
 ]
 
 [tool.ruff.lint.isort]

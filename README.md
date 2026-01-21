@@ -1,16 +1,45 @@
 ### video-service
-A service to capture relevant video clips from an online camera. The service can run as worker in 2 modes
-## CAPTURE
-Capture of a stream, save as video clips in configurable resolution and duration.
+A service to capture relevant video clips from an online camera. The service can run as worker in 3 modes:
+
+## CAPTURE_LOCAL
+Capture video from a stream using Python libraries (cv2.VideoCapture), save as video clips in configurable resolution and duration. Video is stored locally and then uploaded to cloud bucket.
+
+## CAPTURE_SRT
+Capture video using Google Live Stream API. Creates an SRT Push endpoint that waits for incoming video streams and stores them directly to cloud storage with configurable clip duration. This is a cloud-native approach that requires no local compute resources.
+
 ## DETECT
-Line crossing detection. The service can run as stand alone worker or take input from worker CAPTURE.
-Configuration from database (default values in global_settings.json) will always be shared between the workers wile each workers mode will be defined through environment (env) configuration.
+Line crossing detection. The service can run as stand alone worker or take input from worker CAPTURE_LOCAL or CAPTURE_SRT.
+
+Configuration from database (default values in global_settings.json) will always be shared between the workers while each worker's mode will be defined through environment (env) configuration.
 
 # storage settings
 Sets usage of local file storage or cloud services such as Buckets
 valid storage modes (VIDEO_STORAGE_MODE):
 local_storage - pushing video to cloud bucket
 cloud_storage - pushing image detectsions to cloud bucket
+
+## Using CAPTURE_SRT Mode (Google Live Stream API)
+
+The CAPTURE_SRT mode integrates the `video-streaming/` module to provide cloud-native video capture using **Google Cloud Live Stream API**. When started in this mode, the service creates an SRT Push endpoint and waits for incoming video streams, storing them directly to cloud storage.
+
+**To use CAPTURE_SRT mode:**
+1. Set `MODE=CAPTURE_SRT` in your environment
+2. Ensure the video-streaming module dependencies are installed: `pip install google-cloud-video-live-stream`
+3. Configure Google Cloud credentials (see [video-streaming/SETUP.md](video-streaming/SETUP.md))
+4. Start the service - it will create an SRT Push URL and wait for incoming streams
+5. Stream video to the provided SRT Push URL
+6. Videos are automatically stored to cloud storage with configurable clip duration
+
+**Key differences:**
+- **CAPTURE_LOCAL** (Python cv2): Pulls video from URL, processes locally, then uploads to cloud
+- **CAPTURE_SRT** (Live Stream API): Waits for SRT Push streams, stores directly to cloud with no local compute
+
+**When to use CAPTURE_SRT:**
+- Event-based or sporadic streaming (lower cost for low usage)
+- Serverless/cloud-native architecture preferred
+- Minimal infrastructure maintenance desired
+
+See [video-streaming/README.md](video-streaming/README.md) for detailed documentation, [video-streaming/COMPARISON.md](video-streaming/COMPARISON.md) for feature comparison, and [video-streaming/SETUP.md](video-streaming/SETUP.md) for setup instructions.
 
 ## Requirement for development
 
@@ -60,10 +89,14 @@ PHOTOS_HOST_SERVER=localhost
 PHOTOS_HOST_PORT=8092
 USERS_HOST_SERVER=localhost
 USERS_HOST_PORT=8086
-GOOGLE_CLOUD_PROJECT=sigma-celerity-257719
-GOOGLE_STORAGE_BUCKET=langrenn-sprint
+GOOGLE_CLOUD_PROJECT=your-project-id
+GOOGLE_STORAGE_BUCKET=your-bucket-name
 GOOGLE_STORAGE_SERVER=https://storage.googleapis.com
-MODE=DETECT
+MODE=CAPTURE_LOCAL
+# Valid MODE values: CAPTURE_LOCAL, CAPTURE_SRT, DETECT
+# CAPTURE_LOCAL: Traditional Python video capture from URL
+# CAPTURE_SRT: Google Live Stream API with SRT Push (requires google-cloud-video-live-stream)
+# DETECT: Line crossing detection
 
 ## Running tests
 

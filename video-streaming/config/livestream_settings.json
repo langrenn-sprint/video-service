@@ -1,0 +1,20 @@
+{
+    "GOOGLE_CLOUD_PROJECT": "your-project-id",
+    "GOOGLE_CLOUD_REGION": "europe-north1",
+    "GOOGLE_STORAGE_BUCKET": "your-bucket-name",
+    "VIDEO_CLIP_DURATION": 30,
+    "SRT_PORT": 5000,
+    "LIVESTREAM_CHANNEL_PREFIX": "video-capture",
+    "LIVESTREAM_INPUT_PREFIX": "srt-input",
+    "LIVESTREAM_OUTPUT_PREFIX": "gcs-output",
+    "VIDEO_OUTPUT_PATH_TEMPLATE": "events/{event_id}/captured/",
+    "VIDEO_CODEC": "h264",
+    "VIDEO_BITRATE_BPS": 2000000,
+    "VIDEO_WIDTH": 1280,
+    "VIDEO_HEIGHT": 720,
+    "VIDEO_FPS": 30,
+    "AUDIO_CODEC": "aac",
+    "AUDIO_BITRATE_BPS": 128000,
+    "AUDIO_CHANNELS": 2,
+    "AUDIO_SAMPLE_RATE": 48000
+}

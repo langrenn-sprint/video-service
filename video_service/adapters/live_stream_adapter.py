@@ -8,6 +8,7 @@ from google.cloud.video.live_stream_v1.types import (
     Channel,
     ElementaryStream,
     Input,
+    InputAttachment,
     Manifest,
     MuxStream,
     SegmentSettings,
@@ -103,15 +104,18 @@ class LiveStreamAdapter:
                 frame_rate=video_fps,
                 height_pixels=video_height,
                 width_pixels=video_width,
+                gop_duration=f"{segment_duration}s",
             )
         )
 
-        # Configure audio stream
-        # Set channel layout based on number of channels
-        if audio_channels == 2:  # noqa: PLR2004, SIM108
-            channel_layout = ["fl", "fr"]  # Stereo: front left, front right
-        else:
-            channel_layout = ["fc"]  # Mono: front center
+        # Create elementary streams
+        video_elementary = ElementaryStream(
+            key="video-stream",
+            video_stream=video_stream,
+        )
+        audio_ch_def = 2
+        # Configure audio stream (required for TS container)
+        channel_layout = ["fl", "fr"] if audio_channels == audio_ch_def else ["fc"]  # Stereo or mono
 
         audio_stream = AudioStream(
             codec=audio_codec,
@@ -121,22 +125,19 @@ class LiveStreamAdapter:
             sample_rate_hertz=audio_sample_rate,
         )
 
-        # Create elementary streams
-        video_elementary = ElementaryStream(
-            key="video-stream",
-            video_stream=video_stream,
-        )
-
         audio_elementary = ElementaryStream(
             key="audio-stream",
             audio_stream=audio_stream,
         )
 
+        elementary_streams = [video_elementary, audio_elementary]
+        mux_elementary_stream_keys = ["video-stream", "audio-stream"]
+
         # Create mux stream (combines video and audio)
         mux_stream = MuxStream(
             key="mux-stream",
             container="ts",
-            elementary_streams=["video-stream", "audio-stream"],
+            elementary_streams=mux_elementary_stream_keys,
             segment_settings=SegmentSettings(
                 segment_duration=f"{segment_duration}s",
             ),
@@ -156,13 +157,13 @@ class LiveStreamAdapter:
         # Create channel configuration
         channel = Channel(
             input_attachments=[
-                Channel.InputAttachment(  # type: ignore[attr-defined]
+                InputAttachment(
                     key="input",
                     input=input_name,
                 )
             ],
             output=output,
-            elementary_streams=[video_elementary, audio_elementary],
+            elementary_streams=elementary_streams,
             mux_streams=[mux_stream],
             manifests=[manifest],
         )

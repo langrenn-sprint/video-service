@@ -98,9 +98,7 @@ class LiveStreamService:
         )
 
         # Generate resource IDs
-        input_id = await ConfigAdapter().get_config(
-            token, event["id"], "LIVESTREAM_INPUT_PREFIX"
-        )
+        input_id = f"{await ConfigAdapter().get_config(token, event['id'], 'LIVESTREAM_INPUT_PREFIX')}-{event['id']}"
         channel_id = f"{await ConfigAdapter().get_config(token, event['id'], 'LIVESTREAM_CHANNEL_PREFIX')}-{event["id"]}"
 
         # Create output path in cloud storage
@@ -130,10 +128,10 @@ class LiveStreamService:
                 video_width=await ConfigAdapter().get_config_int(token, event["id"], "VIDEO_WIDTH"),
                 video_height=await ConfigAdapter().get_config_int(token, event["id"], "VIDEO_HEIGHT"),
                 video_fps=await ConfigAdapter().get_config_int(token, event["id"], "VIDEO_CLIP_FPS"),
-                audio_codec=await ConfigAdapter().get_config(token, event["id"], "AUDIO_CODEC"),
-                audio_bitrate_bps=await ConfigAdapter().get_config_int(token, event["id"], "AUDIO_BITRATE_BPS"),
-                audio_channels=await ConfigAdapter().get_config_int(token, event["id"], "AUDIO_CHANNELS"),
-                audio_sample_rate=await ConfigAdapter().get_config_int(token, event["id"], "AUDIO_SAMPLE_RATE"),
+                audio_codec="aac",
+                audio_bitrate_bps=128000,
+                audio_channels=2,
+                audio_sample_rate=48000,
             )
 
             # Start channel

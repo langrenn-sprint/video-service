@@ -15,6 +15,7 @@ from video_service.adapters import (
     EventsAdapter,
     GCSLockAdapter,
     PhotosFileAdapter,
+    ServiceInstanceAdapter,
     StatusAdapter,
     VideoStreamNotFoundError,
 )
@@ -31,8 +32,7 @@ class VideoService:
         self,
         token: str,
         event: dict,
-        status_type: str,
-        instance_name: str,
+        service_info: dict,
     ) -> str:
         """Capture video from a stream, save the video to a file.
 
@@ -41,8 +41,7 @@ class VideoService:
         Args:
             token: To update databes
             event: Event details
-            status_type: To update status messages
-            instance_name: Name of the instance running the service
+            service_info: Information about the service instance
 
         Returns:
             A string indicating the status of the video analytics.
@@ -74,7 +73,7 @@ class VideoService:
         error_count = 0
         # Update status and return result
         details = {
-            "instance_name": instance_name,
+            "instance_name": service_info["name"],
             "video_stream_url": video_stream_url,
             "video_file_path": video_file_path,
             "frame_rate": frame_rate,
@@ -84,8 +83,8 @@ class VideoService:
         await StatusAdapter().create_status(
             token,
             event,
-            status_type,
-            f"{instance_name}: Initiating video capture.",
+            service_info["status_type"],
+            f"{service_info['name']}: Initiating video capture.",
             details,
         )
 
@@ -102,23 +101,21 @@ class VideoService:
                 event,
                 video_capture,
                 video_settings,
+                service_info
             )
 
         finally:
             video_capture.release()
-            await ConfigAdapter().update_config(
-                token, event["id"], "CAPTURE_VIDEO_SERVICE_RUNNING", "False"
-            )
 
         # Update status and return result
         informasjon = f"{clip_count} clips saved, {error_count} errors."
         await StatusAdapter().create_status(
             token,
             event,
-            status_type,
+            service_info["status_type"],
             informasjon,
             {
-                "instance_name": instance_name,
+                "instance_name": service_info["name"],
                 "clip_count": clip_count,
                 "video_settings": video_settings
             },
@@ -131,6 +128,7 @@ class VideoService:
         event: dict,
         video_capture: cv2.VideoCapture,
         video_settings: dict,
+        service_info: dict,
     ) -> tuple:
         """Capture a video clip from the video stream.
 
@@ -139,6 +137,7 @@ class VideoService:
             event: Event details
             video_capture: OpenCV VideoCapture object.
             video_settings: dict, video settings from config.
+            service_info: Information about the service instance
 
         Returns:
             tuple: A tuple containing number of clips captured and errors encountered.
@@ -196,10 +195,9 @@ class VideoService:
                 }
                 logging.info("Captured clip %d with %d frames and timing: %s", clip_count, clip_frames_count, capture_timing)
 
-            continue_tracking = await ConfigAdapter().get_config_bool(
-                token, event["id"], "CAPTURE_VIDEO_SERVICE_START"
-            )
-            if not continue_tracking:
+            instance_info = await ServiceInstanceAdapter().get_service_instance_by_id(token, service_info["id"])
+
+            if instance_info["action"] == "stop":
                 break  # No more frames to process
             if error_count >= max_errors:
                 logging.error("Maximum error count reached: %d", error_count)
@@ -268,9 +266,6 @@ class VideoService:
         video_urls = PhotosFileAdapter().get_capture_files(event["id"], "local_storage")
 
         if video_urls:
-            await ConfigAdapter().update_config(
-                token, event["id"], "DETECT_VIDEO_SERVICE_RUNNING", "True"
-            )
             video_settings = await self.get_video_settings(token, event)
             for video_stream_url in video_urls:
                 try:
@@ -299,10 +294,6 @@ class VideoService:
                     token, event, status_type, informasjon, details
                 )
 
-            # Update status and return result
-            await ConfigAdapter().update_config(
-                token, event["id"], "DETECT_VIDEO_SERVICE_RUNNING", "False"
-            )
         return f"Crossings detection completed, processed {len(video_urls)} videos."
 
     async def detect_crossings_cloud_storage(
@@ -328,10 +319,6 @@ class VideoService:
 
         """
         video_count = 0
-        await ConfigAdapter().update_config(
-            token, event["id"], "DETECT_VIDEO_SERVICE_RUNNING", "True"
-        )
-
         while True:
             # Open the video stream for captured video clips
             video_url = PhotosFileAdapter().get_unlocked_capture_file(event["id"])
@@ -378,10 +365,6 @@ class VideoService:
                 # No more videos to process
                 break
 
-        # Update status and return result
-        await ConfigAdapter().update_config(
-            token, event["id"], "DETECT_VIDEO_SERVICE_RUNNING", "False"
-        )
         return f"Crossings detection completed, processed {video_count} videos."
 
     def detect_crossings_with_ultralytics(
@@ -392,7 +375,7 @@ class VideoService:
         """Analyze video and capture screenshots of line crossings.
 
         Args:
-            token: To update databes
+            token: To update database
             event: Event details
             video_settings: Video settings from config.
 

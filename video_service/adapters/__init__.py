@@ -5,7 +5,6 @@ from .events_adapter import EventsAdapter
 from .exceptions import VideoStreamNotFoundError
 from .gcs_lock_adapter import GCSLockAdapter
 from .google_cloud_storage_adapter import GoogleCloudStorageAdapter
-from .live_stream_adapter import LiveStreamAdapter
 from .photos_file_adapter import PhotosFileAdapter
 from .service_instance_adapter import ServiceInstanceAdapter
 from .status_adapter import StatusAdapter

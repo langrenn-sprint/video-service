@@ -15,7 +15,6 @@ dependencies = [
     "ultralytics==8.3.204",
     "python-dotenv>=1.2.1",
     "tzdata>=2025.3",
-    "google-cloud-video-live-stream>=1.15.0",
 ]
 
 [dependency-groups]

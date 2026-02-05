@@ -238,7 +238,7 @@ class VideoService:
         finally:
             writer.release()
         try:
-            tmp_path.replace(final_path)
+            await asyncio.to_thread(tmp_path.replace, final_path)
         except Exception:
             logging.exception("Failed to rename %s to %s", tmp_path, final_path)
         logging.info("Saved video clip to %s", final_path)

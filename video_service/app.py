@@ -16,7 +16,7 @@ from video_service.adapters import (
     StatusAdapter,
     UserAdapter,
 )
-from video_service.services import LiveStreamService, VideoService, VisionAIService
+from video_service.services import VideoService, VisionAIService
 
 # get base settings
 load_dotenv()
@@ -97,7 +97,7 @@ async def main() -> None:
             token = await do_login()
             event = await get_event(token)
 
-            if service_info["mode"] not in ["CAPTURE_LOCAL", "CAPTURE_SRT", "DETECT"]:
+            if service_info["mode"] not in ["CAPTURE_LOCAL", "DETECT"]:
                 informasjon = f"Invalid mode {service_info['mode']} - exiting."
                 raise Exception(informasjon)
 
@@ -172,9 +172,6 @@ async def run_the_video_service(token: str, event: dict, service_info: dict) -> 
             if service_info["mode"] == "CAPTURE_LOCAL":
                 await VisionAIService().print_photo_with_trigger_line(token, event, service_info["status_type"])
                 await VideoService().capture_video(token, event, service_info)
-            elif service_info["mode"] == "CAPTURE_SRT":
-                await VisionAIService().print_photo_with_trigger_line(token, event, service_info["status_type"])
-                await run_capture_srt(token, event, service_info)
             elif service_info["mode"] == "DETECT":
                 if storage_mode == "local_storage":
                     await VideoService().detect_crossings_local_storage(token, event, service_info["status_type"])
@@ -266,79 +263,6 @@ async def get_config(token: str, instance_id: str) -> dict:
         instance_config["video_start"] = False
 
     return instance_config
-
-
-async def run_capture_srt(token: str, event: dict, service_info: dict) -> None:
-    """Run SRT Push video capture using Google Live Stream API.
-
-    This function creates a Live Stream API channel that waits for incoming SRT Push streams
-    and stores the video directly to cloud storage with configurable clip duration.
-
-    Args:
-        token: Authentication token for database access
-        event: Event details including event ID
-        service_info: Information about the service instance
-
-    Raises:
-        Exception: If video-streaming module is not available
-
-    """
-    try:
-        # Initialize Live Stream service
-        service = LiveStreamService()
-
-        # Create and start the channel
-        logging.info("Creating Live Stream API channel for event: %s", event["id"])
-        channel_info = await service.create_and_start_channel(
-            token,
-            event,
-        )
-
-        # Update status with SRT Push URL
-        srt_push_url = channel_info["srt_push_url"]
-        output_uri = channel_info["output_uri"]
-
-        logging.info("Channel created. Waiting for SRT Push stream at: %s", srt_push_url)
-        logging.info("Video will be stored to: %s", output_uri)
-
-        # Keep the channel running while VIDEO_SERVICE_START is True
-        while True:
-            instance_info = await ServiceInstanceAdapter().get_service_instance_by_id(token, service_info["id"])
-
-            if instance_info["action"] == "stop":
-                logging.info("Stopping SRT capture for event: %s", event["id"])
-                break
-
-            # Check channel status periodically
-            try:
-                status = await service.get_channel_status(token, event)
-                logging.debug("Channel status: %s", status["state"])
-            except Exception as e:
-                logging.warning("Failed to get channel status: %s", e)
-
-            await asyncio.sleep(10)
-
-        # Stop and cleanup the channel
-        logging.info("Stopping Live Stream channel for event: %s", event["id"])
-        await service.stop_channel(token, event)
-
-        informasjon = "SRT Push channel stopped. Cleaning up resources."
-        await StatusAdapter().create_status(
-            token, event, service_info["status_type"], informasjon,
-            {"service_info": service_info}
-        )
-
-        await service.cleanup_resources(token, event)
-
-        informasjon = f"SRT capture completed. Videos stored in: {output_uri}"
-        await StatusAdapter().create_status(
-            token, event, service_info["status_type"], informasjon,
-            {"service_info": service_info, "output_uri": output_uri}
-        )
-
-    except Exception as e:
-        err_string = str(e)
-        logging.exception("Error in SRT capture: %s", err_string)
 
 
 if __name__ == "__main__":

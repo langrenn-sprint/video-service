@@ -23,7 +23,7 @@ load_dotenv()
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 event = {"id": ""}
 status_type = ""
-STATUS_INTERVAL = 60
+STATUS_INTERVAL = 250
 
 # set up logging
 LOGGING_LEVEL = os.getenv("LOGGING_LEVEL", "INFO")
@@ -58,7 +58,7 @@ async def create_service_instance_dict(
     token: str,
     event: dict,
 ) -> dict:
-    """Create a service instance dictionary.
+    """Create a service instance dictionary for the video service.
 
     Args:
         token: Authentication token for database access
@@ -126,8 +126,10 @@ async def main() -> None:
                 except Exception as e:
                     err_string = str(e)
                     logging.exception(err_string)
-                    # try new login if token expired (401 error)
-                    if str(HTTPStatus.UNAUTHORIZED.value) in err_string:
+                    # try new login if token expired
+                    if str(HTTPStatus.UNAUTHORIZED.value) in err_string or str(
+                        HTTPStatus.FORBIDDEN.value
+                    ) in err_string:
                         token = await do_login()
                     else:
                         raise Exception(err_string) from e

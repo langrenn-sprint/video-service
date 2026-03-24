@@ -17,6 +17,7 @@ from video_service.adapters import (
 from video_service.adapters.google_cloud_storage_adapter import (
     GoogleCloudStorageAdapter,
 )
+from video_service.adapters.service_instance_adapter import ServiceInstanceAdapter
 
 COUNT_COORDINATES = 4
 DETECTION_BOX_MINIMUM_SIZE = 0.01
@@ -104,26 +105,24 @@ class VisionAIService:
             "image_type": "detection"
         }
 
-    async def get_trigger_line_xyxy_list(self, token: str, event: dict) -> list:
-        """Get list of trigger line coordinates."""
-        trigger_line_xyxy = await ConfigAdapter().get_config(
-            token, event["id"], "TRIGGER_LINE_XYXYN"
-        )
-        trigger_line_xyxy_list = []
+    def parse_trigger_line_xyxyn(self, trigger_line_xyxyn: str | list | tuple) -> list[float]:
+        """Parse trigger line coordinates into a normalized 4-value float list."""
+        if isinstance(trigger_line_xyxyn, str):
+            parsed_trigger_line = [
+                float(value.strip())
+                for value in trigger_line_xyxyn.split(":")
+            ]
+        elif isinstance(trigger_line_xyxyn, (list, tuple)):
+            parsed_trigger_line = [float(value) for value in trigger_line_xyxyn]
+        else:
+            information = "trigger_line_xyxyn must be a colon-separated string or list."
+            raise TypeError(information)
 
-        try:
-            trigger_line_xyxy_list = [float(i) for i in trigger_line_xyxy.split(":")]
-        except Exception as e:
-            informasjon  = f"Error reading TRIGGER_LINE_XYXYN: {e}"
-            logging.exception(informasjon)
-            raise Exception(informasjon) from e
+        if len(parsed_trigger_line) != COUNT_COORDINATES:
+            information = "trigger_line_xyxyn must contain 4 coordinates."
+            raise ValueError(information)
 
-        # validate for correct number of coordinates
-        if len(trigger_line_xyxy_list) != COUNT_COORDINATES:
-            informasjon = "TRIGGER_LINE_XYXYN must have 4 numbers, colon-separated."
-            logging.error(informasjon)
-            raise Exception(informasjon)
-        return trigger_line_xyxy_list
+        return parsed_trigger_line
 
     def process_boxes(self, event_id: str, result: Results, video_settings: dict, crossings: dict, frame_number: int) -> list:
         """Process result from video analytics."""
@@ -259,13 +258,11 @@ class VisionAIService:
         self,
         token: str,
         event: dict,
-        status_type: str,
+        service_config: dict,
     ) -> None:
         """Print an image with a trigger line."""
-        trigger_line_xyxyn = await self.get_trigger_line_xyxy_list(
-            token, event
-        )
-        video_stream_url = await ConfigAdapter().get_config(token, event["id"], "VIDEO_URL")
+        trigger_line_xyxyn = service_config.get("metadata", {}).get("trigger_line_xyxyn")
+        video_stream_url = service_config.get("metadata", {}).get("video_url")
 
         cap = cv2.VideoCapture(video_stream_url)
         # check if video stream is opened
@@ -280,7 +277,7 @@ class VisionAIService:
             im_rgb = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
 
             # Draw the trigger line
-            x1, y1, x2, y2 = map(float, trigger_line_xyxyn)  # Ensure integer coordinates
+            x1, y1, x2, y2 = self.parse_trigger_line_xyxyn(trigger_line_xyxyn)
             cv2.line(
                 im_rgb,
                 (int(x1 * im.shape[1]), int(y1 * im.shape[0])),
@@ -328,21 +325,20 @@ class VisionAIService:
             if not success:
                 information = "Failed to encode image for upload."
                 raise Exception(information)
-            metadata = {
+            image_metadata = {
                 "trigger_line_coordinates": str(trigger_line_xyxyn),
                 "image_type": "trigger_line",
                 "image_time": time_text
             }
-            url = GoogleCloudStorageAdapter().upload_blob_bytes(event["id"], "TRIGGER_LINE", file_name, encoded_image.tobytes(), "image/jpeg", metadata)
+            url = GoogleCloudStorageAdapter().upload_blob_bytes(event["id"], "TRIGGER_LINE", file_name, encoded_image.tobytes(), "image/jpeg", image_metadata)
             logging.info(f"Image uploaded to: {url}")
 
             informasjon = "Trigger line photo created."
-            await StatusAdapter().create_status(token, event, status_type, informasjon, {"trigger_line_photo_url": url})
-            await ConfigAdapter().update_config(
-                token, event["id"], "NEW_TRIGGER_LINE_PHOTO", "False"
-            )
-            await ConfigAdapter().update_config(
-                token, event["id"], "TRIGGER_LINE_PHOTO_URL", url
+            await StatusAdapter().create_status(token, event, service_config["service_type"], informasjon, {"trigger_line_photo_url": url})
+
+            # Update config with latest detected photo url if there are detections
+            await ServiceInstanceAdapter().update_service_instance_photo(
+                token, event, service_config["id"], trigger_line_photo_url=url
             )
 
         except TypeError as e:

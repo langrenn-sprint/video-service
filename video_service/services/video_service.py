@@ -32,7 +32,7 @@ class VideoService:
         self,
         token: str,
         event: dict,
-        service_info: dict,
+        service_config: dict,
     ) -> str:
         """Capture video from a stream, save the video to a file.
 
@@ -41,7 +41,7 @@ class VideoService:
         Args:
             token: To update databes
             event: Event details
-            service_info: Information about the service instance
+            service_config: Information about the service instance
 
         Returns:
             A string indicating the status of the video analytics.
@@ -51,7 +51,7 @@ class VideoService:
 
         """
         informasjon = ""
-        video_stream_url = await ConfigAdapter().get_config(token, event["id"], "VIDEO_URL")
+        video_stream_url = service_config.get("metadata", {}).get("video_url")
         video_file_path = PhotosFileAdapter().get_raw_capture_folder_path()
 
         clip_duration = await ConfigAdapter().get_config_int(
@@ -73,7 +73,7 @@ class VideoService:
         error_count = 0
         # Update status and return result
         details = {
-            "instance_name": service_info["name"],
+            "instance_name": service_config["instance_name"],
             "video_stream_url": video_stream_url,
             "video_file_path": video_file_path,
             "frame_rate": frame_rate,
@@ -83,8 +83,8 @@ class VideoService:
         await StatusAdapter().create_status(
             token,
             event,
-            service_info["status_type"],
-            f"{service_info['name']}: Initiating video capture.",
+            service_config["service_type"],
+            f"{service_config['instance_name']}: Initiating video capture.",
             details,
         )
 
@@ -101,7 +101,7 @@ class VideoService:
                 event,
                 video_capture,
                 video_settings,
-                service_info
+                service_config
             )
 
         finally:
@@ -112,10 +112,10 @@ class VideoService:
         await StatusAdapter().create_status(
             token,
             event,
-            service_info["status_type"],
+            service_config["service_type"],
             informasjon,
             {
-                "instance_name": service_info["name"],
+                "instance_name": service_config["instance_name"],
                 "clip_count": clip_count,
                 "video_settings": video_settings
             },
@@ -128,7 +128,7 @@ class VideoService:
         event: dict,
         video_capture: cv2.VideoCapture,
         video_settings: dict,
-        service_info: dict,
+        service_config: dict,
     ) -> tuple:
         """Capture a video clip from the video stream.
 
@@ -137,7 +137,7 @@ class VideoService:
             event: Event details
             video_capture: OpenCV VideoCapture object.
             video_settings: dict, video settings from config.
-            service_info: Information about the service instance
+            service_config: Information about the service instance
 
         Returns:
             tuple: A tuple containing number of clips captured and errors encountered.
@@ -195,9 +195,9 @@ class VideoService:
                 }
                 logging.info("Captured clip %d with %d frames and timing: %s", clip_count, clip_frames_count, capture_timing)
 
-            instance_info = await ServiceInstanceAdapter().get_service_instance_by_id(token, service_info["id"])
+            instance_info_refreshed = await ServiceInstanceAdapter().get_service_instance_by_id(token, service_config["id"])
 
-            if instance_info["action"] == "stop":
+            if instance_info_refreshed["action"] == "stop":
                 break  # No more frames to process
             if error_count >= max_errors:
                 logging.error("Maximum error count reached: %d", error_count)
@@ -247,7 +247,7 @@ class VideoService:
         self,
         token: str,
         event: dict,
-        status_type: str,
+        service_config: dict,
     ) -> str:
         """Detect crossing video from detected video clips - local storage.
 
@@ -256,7 +256,8 @@ class VideoService:
         Args:
             token: To update database
             event: Event details
-            status_type: To update status messages
+            service_config: Service configuration dictionary
+
 
         Returns:
             A string indicating the status of the video analytics.
@@ -266,7 +267,7 @@ class VideoService:
         video_urls = PhotosFileAdapter().get_capture_files(event["id"], "local_storage")
 
         if video_urls:
-            video_settings = await self.get_video_settings(token, event)
+            video_settings = await self.get_video_settings(token, event, service_config)
             for video_stream_url in video_urls:
                 try:
                     video_settings["url"] = video_stream_url["url"]
@@ -291,7 +292,7 @@ class VideoService:
                     }
                     logging.exception(informasjon)
                 await StatusAdapter().create_status(
-                    token, event, status_type, informasjon, details
+                    token, event, service_config["service_type"], informasjon, details
                 )
 
         return f"Crossings detection completed, processed {len(video_urls)} videos."
@@ -300,8 +301,7 @@ class VideoService:
         self,
         token: str,
         event: dict,
-        instance_name: str,
-        status_type: str,
+        service_config: dict,
     ) -> str:
         """Detect crossing video from detected video clips. Storage mode is cloud storage.
 
@@ -310,9 +310,7 @@ class VideoService:
         Args:
             token: To update database
             event: Event details
-            storage_mode: Storage mode for the video clips
-            instance_name: Name of the service instance.
-            status_type: To update status messages
+            service_config: Service configuration dictionary
 
         Returns:
             A string indicating the status of the video analytics.
@@ -325,7 +323,7 @@ class VideoService:
 
             if video_url:
                 video_count += 1
-                video_settings = await self.get_video_settings(token, event)
+                video_settings = await self.get_video_settings(token, event, service_config)
                 video_settings["url"] = video_url["url"]
                 # lock video file - only on cloud storage mode
                 instance_id = f"instance-{os.getpid()}"
@@ -337,21 +335,26 @@ class VideoService:
                 try:
                     url_list = self.detect_crossings_with_ultralytics(event, video_settings)
                     if url_list:
-                        await ConfigAdapter().update_config(
-                            token, event["id"], "LATEST_DETECTED_PHOTO_URL", url_list[0]
+                        # Update config with latest detected photo url if there are detections
+                        await ServiceInstanceAdapter().update_service_instance_photo(
+                            token, event, service_config["id"], photo_url=url_list[0]
                         )
-                    PhotosFileAdapter().move_to_capture_archive(event["id"], "cloud_storage", Path(video_url["name"]).name)
+                    PhotosFileAdapter().move_to_capture_archive(
+                        event["id"], "cloud_storage", Path(video_url["name"]).name
+                    )
                     details = {
                         "video_url": video_url["url"],
                         "passeringer": url_list,
                     }
                     informasjon = f" {len(url_list)} passeringer."
                 except VideoStreamNotFoundError as e:
-                    error_file = PhotosFileAdapter().move_to_error_archive(event["id"], "cloud_storage", Path(video_url["name"]).name)
-                    informasjon = f"{instance_name}: Error processing stream from: {error_file} - details: {e!s}"
+                    error_file = PhotosFileAdapter().move_to_error_archive(
+                        event["id"], "cloud_storage", Path(video_url["name"]).name
+                    )
+                    informasjon = f"{service_config['instance_name']}: Error: {error_file} - details: {e!s}"
                     logging.exception(informasjon)
                     details = {
-                        "instance_name": instance_name,
+                        "instance_name": service_config["instance_name"],
                         "error_file": error_file,
                         "exception": str(e),
                     }
@@ -359,7 +362,7 @@ class VideoService:
                     # Always release lock
                     GCSLockAdapter().release_lock(video_url["name"])
                 await StatusAdapter().create_status(
-                    token, event, status_type, informasjon, details
+                    token, event, service_config["service_type"], informasjon, details
                 )
             else:
                 # No more videos to process
@@ -422,12 +425,14 @@ class VideoService:
         self,
         token: str,
         event: dict,
+        service_config: dict,
     ) -> dict:
         """Get video settings from config.
 
         Args:
             token: To access database
             event: Event details
+            service_config: Service configuration details
 
         Returns:
             A dict with video settings.
@@ -438,6 +443,7 @@ class VideoService:
             token, event["id"], "CAMERA_LOCATION"
         )
 
+
         video_settings["yolo_model_name"] = await ConfigAdapter().get_config(
             token, event["id"], "YOLO_MODEL_NAME"
         )
@@ -445,8 +451,8 @@ class VideoService:
             token, event["id"], "DETECT_ANALYTICS_IMAGE_SIZE"
         )
         video_settings["trigger_line"] = (
-            await VisionAIService().get_trigger_line_xyxy_list(
-                token, event
+            VisionAIService().parse_trigger_line_xyxyn(
+                service_config.get("metadata", {}).get("trigger_line_xyxyn")
             )
         )
         video_settings["min_confidence"] = float(await ConfigAdapter().get_config(

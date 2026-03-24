@@ -22,7 +22,6 @@ from video_service.services import VideoService, VisionAIService
 load_dotenv()
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 event = {"id": ""}
-status_type = ""
 STATUS_INTERVAL = 250
 
 # set up logging
@@ -45,7 +44,6 @@ service_info = {
     "mode": os.getenv("MODE", "DUMMY"),
     "name": "",
     "id": "",
-    "status_type": "",
 }
 
 if os.getenv("K_REVISION"):
@@ -57,12 +55,14 @@ else:
 async def create_service_instance_dict(
     token: str,
     event: dict,
+    service_info: dict
 ) -> dict:
     """Create a service instance dictionary for the video service.
 
     Args:
         token: Authentication token for database access
         event: The event dictionary
+        service_info: Information about the service instance
 
     Returns:
         A dictionary representing the service instance
@@ -80,8 +80,12 @@ async def create_service_instance_dict(
         "last_heartbeat": time_now,
         "metadata": {
             "latest_photo_url": "",
+            "trigger_line_photo_url": "",
             "trigger_line_xyxyn": await ConfigAdapter().get_config(
                 token, event["id"], "TRIGGER_LINE_XYXYN"
+            ),
+            "video_url": await ConfigAdapter().get_config(
+                token, event["id"], "VIDEO_URL"
             ),
         }
     }
@@ -91,6 +95,7 @@ async def main() -> None:
     """CLI for analysing video stream."""
     token = ""
     event = {}
+    service_instance = {}
     try:
         try:
             # login to data-source
@@ -101,16 +106,13 @@ async def main() -> None:
                 informasjon = f"Invalid mode {service_info['mode']} - exiting."
                 raise Exception(informasjon)
 
-            service_info["status_type"] += await ConfigAdapter().get_config(
-                token, event["id"], "VIDEO_SERVICE_STATUS_TYPE"
-            ) + f"_{service_info['mode']}"
+            service_instance = await create_service_instance_dict(token, event, service_info)
+            service_info["id"] = await ServiceInstanceAdapter().create_service_instance(token, service_instance)
+
             information = (f"{service_info['name']}, mode {service_info['mode']} er klar.")
             await StatusAdapter().create_status(
-                token, event, service_info["status_type"], information, event
+                token, event, service_instance["service_type"], information, event
             )
-
-            service_instance = await create_service_instance_dict(token, event)
-            service_info["id"] = await ServiceInstanceAdapter().create_service_instance(token, service_instance)
 
             i = 0
             while True:
@@ -131,6 +133,7 @@ async def main() -> None:
                         HTTPStatus.FORBIDDEN.value
                     ) in err_string:
                         token = await do_login()
+                        await ServiceInstanceAdapter().send_heartbeat(token, event, service_info["id"])
                     else:
                         raise Exception(err_string) from e
                 await asyncio.sleep(5)
@@ -139,7 +142,7 @@ async def main() -> None:
             err_string = str(e)
             logging.exception(err_string)
             await StatusAdapter().create_status(
-                token, event, service_info["status_type"], "Critical Error - exiting program", {"error": err_string}
+                token, event, service_instance["service_type"], "Critical Error - exiting program", {"error": err_string}
             )
             if service_info["id"]:
                 await ServiceInstanceAdapter().delete_service_instance(
@@ -149,7 +152,7 @@ async def main() -> None:
         await StatusAdapter().create_status(
             token,
             event,
-            service_info["status_type"],
+            service_instance["service_type"],
             f"{service_info['name']} was cancelled (ctrl-c pressed).",
             {}
         )
@@ -160,30 +163,30 @@ async def main() -> None:
 
 async def run_the_video_service(token: str, event: dict, service_info: dict) -> None:
     """Run the service."""
-    video_config = {}
-    video_config = await get_config(token, service_info["id"])
+    service_config = await ServiceInstanceAdapter().get_service_instance_by_id(token, service_info["id"])
+
     storage_mode = await ConfigAdapter().get_config(
         token, event["id"], "VIDEO_STORAGE_MODE"
     )
 
     try:
-        if video_config["video_start"]:
+        if service_config["action"] == "start":
             await ServiceInstanceAdapter().update_service_instance_status(
                 token, event, service_info["id"], "running"
             )
             if service_info["mode"] == "CAPTURE_LOCAL":
-                await VisionAIService().print_photo_with_trigger_line(token, event, service_info["status_type"])
-                await VideoService().capture_video(token, event, service_info)
+                await VisionAIService().print_photo_with_trigger_line(token, event, service_config)
+                await VideoService().capture_video(token, event, service_config)
             elif service_info["mode"] == "DETECT":
                 if storage_mode == "local_storage":
-                    await VideoService().detect_crossings_local_storage(token, event, service_info["status_type"])
+                    await VideoService().detect_crossings_local_storage(token, event, service_config)
                 else:
                     await VideoService().detect_crossings_cloud_storage(
-                        token, event, service_info["name"], service_info["status_type"]
+                        token, event, service_config
                     )
-        elif video_config["new_trigger_line_photo"]:
+        elif service_config["action"] == "trigger_line_photo":
             # new trigger line photo - reset
-            await VisionAIService().print_photo_with_trigger_line(token, event, service_info["status_type"])
+            await VisionAIService().print_photo_with_trigger_line(token, event, service_config)
 
     except Exception as e:
         err_string = str(e)
@@ -191,7 +194,7 @@ async def run_the_video_service(token: str, event: dict, service_info: dict) -> 
         await StatusAdapter().create_status(
             token,
             event,
-            service_info["status_type"],
+            service_config["service_type"],
             f"Error in {service_info['name']}.",
             {"error": err_string},
         )
@@ -247,24 +250,6 @@ async def get_event(token: str) -> dict:
         await asyncio.sleep(5)
 
     return event
-
-
-async def get_config(token: str, instance_id: str) -> dict:
-    """Get config details - use info from db."""
-    instance_info = await ServiceInstanceAdapter().get_service_instance_by_id(token, instance_id)
-    instance_config = {
-        "video_start": False,
-        "new_trigger_line_photo": False,
-    }
-
-    if instance_info["action"] == "start":
-        instance_config["video_start"] = True
-    elif instance_info["action"] == "trigger_line_photo":
-        instance_config["new_trigger_line_photo"] = True
-    elif instance_info["action"] == "stop":
-        instance_config["video_start"] = False
-
-    return instance_config
 
 
 if __name__ == "__main__":

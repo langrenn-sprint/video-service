@@ -70,6 +70,7 @@ MODE=CAPTURE_LOCAL
 # Valid MODE values: CAPTURE_LOCAL, DETECT
 # CAPTURE_LOCAL: Traditional Python video capture from URL
 # DETECT: Line crossing detection
+# EVENT_ID: Optional - if several events are defined in photo-service db
 
 ## Running tests
 

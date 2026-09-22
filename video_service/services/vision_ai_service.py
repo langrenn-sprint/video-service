@@ -75,7 +75,7 @@ class VisionAIService:
         url = GoogleCloudStorageAdapter().upload_blob_bytes(event_id, "DETECT_CROP", f"{file_name}_crop.jpg", encoded_image.tobytes(), "image/jpeg", metadata)
         logging.info(f"Image uploaded to: {url}")
 
-    def create_image_info(
+    def create_image_info(  # noqa: PLR0917
         self,
         event_id: str,
         video_settings: dict,

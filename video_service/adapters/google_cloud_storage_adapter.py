@@ -46,7 +46,7 @@ class GoogleCloudStorageAdapter:
             f"{GOOGLE_STORAGE_SERVER}/{GOOGLE_STORAGE_BUCKET}/{destination_blob_name}"
         )
 
-    def upload_blob_bytes(
+    def upload_blob_bytes(  # noqa: PLR0917
             self,
             event_id: str,
             destination_folder: str,

@@ -61,7 +61,6 @@ class VideoService:
         video_capture = cv2.VideoCapture(video_stream_url)
         if not video_capture.isOpened():
             informasjon = f"Error opening video stream from: {video_stream_url}"
-            logging.exception(informasjon)
             raise VideoStreamNotFoundError(informasjon)
 
         width = int(video_capture.get(cv2.CAP_PROP_FRAME_WIDTH))
